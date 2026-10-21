@@ -586,7 +586,12 @@ function load(){
   DB.attempts.forEach(function(a, i){ if (!a.cid){ a.cid = 'm' + (a.ts||now) + '-' + i; a.synced = false; } });
   PRESETS.forEach(function(p, i){ if (!DB.videos[p.id]) DB.videos[p.id] = {title:p.title + ' | ' + p.speaker, speaker:p.speaker, note:'', dur:0, raw:'', cues:[], deleted:false, updated_at:0, added:i, dirty:false}; });
   var m = (location.hash||'').match(/^#sync=([A-Za-z0-9_-]{4,64})$/);
-  if (m){ DB.sync.code = m[1]; DB.sync.last = 0; try{ history.replaceState(null, '', location.pathname + location.search); }catch(e){} }
+  if (m){ if (m[1] !== DB.sync.code) markAllForPush(); DB.sync.code = m[1]; DB.sync.last = 0; try{ history.replaceState(null, '', location.pathname + location.search); }catch(e){} }
+}
+/* When this device joins a (new) sync space, everything it holds is offered to that space. */
+function markAllForPush(){
+  Object.keys(DB.videos).forEach(function(id){ var v = DB.videos[id]; if ((v.updated_at||0) > 0) v.dirty = true; });
+  DB.attempts.forEach(function(a){ a.synced = false; });
 }
 function save(){ try{ localStorage.setItem(KEY, JSON.stringify(DB)); }catch(e){} }
 load();
@@ -1182,6 +1187,7 @@ function schedulePush(){ if (!DB.sync.code) return; clearTimeout(S.pushTimer); S
 function connectSync(code){
   code = String(code||'').trim();
   if (!code){ toast('同期コードを入れてください'); return; }
+  if (code !== DB.sync.code) markAllForPush();
   DB.sync.code = code; DB.sync.last = 0; save(); renderLibrary();
   syncPull().then(function(ok){ if (ok){ toast('同期しました（動画 ' + visibleVideos().length + ' 本）'); renderLibrary(); } else if (S.syncState==='error' && /違います/.test(S.syncMsg)){ DB.sync.code = ''; save(); renderLibrary(); toast('同期コードが違います'); } });
 }
