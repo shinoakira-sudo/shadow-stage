@@ -634,7 +634,8 @@ window.ShadowCore = (function(){
   function mapTranslation(lines, ja){
     var out = lines.map(function(){ return []; });
     if (!ja || !ja.length || !lines.length) return out.map(function(){ return ''; });
-    var sorted = ja.slice().sort(function(a,b){ return a.start-b.start; });
+    var JA_CREDIT = /^(?:翻訳|校正|字幕|監修)\s*[:：]/;
+    var sorted = ja.filter(function(c){ return c && c.text && !JA_CREDIT.test(c.text); }).sort(function(a,b){ return a.start-b.start; });
     sorted.forEach(function(c, k){
       var cs = c.start, ce = k+1<sorted.length ? Math.max(sorted[k+1].start, cs+0.5) : cs + 3, best = -1, bestOv = 0, i;
       for (i=0;i<lines.length;i++){ var ov = Math.min(ce, lines[i].end) - Math.max(cs, lines[i].start); if (ov > bestOv){ bestOv = ov; best = i; } }
@@ -736,17 +737,24 @@ var S = {lines:[], idx:0, playing:false, seg:null, player:null, ready:false, dur
    An own entry always wins; an own tombstone or a local "hidden" mark hides the shared one. */
 function entryOf(id){
   if (!id) return null;
-  var own = DB.videos[id];
-  if (own) return own.deleted ? null : own;
-  var sh = DB.shared[id];
-  return (sh && !DB.hidden[id]) ? sh : null;
+  var own = DB.videos[id], sh = DB.shared[id];
+  if (own && own.deleted) return null;
+  var shVisible = sh && !DB.hidden[id];
+  if (own){
+    var pristine = !(own.updated_at > 0) && !(own.cues && own.cues.length);   // untouched preset: the shared, scripted version is more useful
+    return (pristine && shVisible) ? sh : own;
+  }
+  return shVisible ? sh : null;
 }
 function isShared(id){ return !!(entryOf(id) && entryOf(id).shared); }
 function currentVideo(){ return entryOf(DB.videoId); }
 function visibleVideos(){
-  var own = Object.keys(DB.videos).filter(function(id){ return !DB.videos[id].deleted; }).sort(function(a,b){ return (DB.videos[a].added||0)-(DB.videos[b].added||0); });
-  var sh = Object.keys(DB.shared).filter(function(id){ return !DB.videos[id] && !DB.hidden[id]; }).sort(function(a,b){ return (DB.shared[a].order||0)-(DB.shared[b].order||0); });
-  return own.concat(sh);
+  var seen = {}; Object.keys(DB.videos).forEach(function(id){ seen[id] = 1; }); Object.keys(DB.shared).forEach(function(id){ seen[id] = 1; });
+  return Object.keys(seen).filter(function(id){ return !!entryOf(id); }).sort(function(a,b){
+    var ea = entryOf(a), eb = entryOf(b);
+    if (!!ea.shared !== !!eb.shared) return ea.shared ? 1 : -1;
+    return ea.shared ? (ea.order||0)-(eb.order||0) : (ea.added||0)-(eb.added||0);
+  });
 }
 /* Before changing a shared video (script, title, timing), turn it into the user's own copy. */
 function ensureOwn(id){
@@ -1123,7 +1131,7 @@ function renderVideoMeta(){
   var st = $('#scriptStatus');
   if (!v){ st.textContent = ''; st.className = 'script-status'; return; }
   var n = v.cues.length ? S.lines.length : 0;
-  st.textContent = n ? 'スクリプト ' + n + ' 行（' + (v.shared ? '共有' : '保存済み') + (v.ja && v.ja.length ? '・日本語あり' : '') + ')' : 'スクリプト未登録';
+  st.textContent = n ? 'スクリプト ' + n + ' 行（' + (v.shared ? '共有' : '保存済み') + (v.ja && v.ja.length ? '・日本語あり' : '') + '）' : 'スクリプト未登録';
   st.className = 'script-status' + (n ? ' ok' : '');
 }
 function chipGroup(host, items, current, onPick){
