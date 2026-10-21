@@ -56,7 +56,7 @@ h1,h2,h3{margin:0;text-wrap:balance}
 .top-actions{display:flex;gap:6px;flex:none}
 
 .grid{display:grid;gap:14px;grid-template-columns:1fr}
-@media (min-width:960px){.grid{grid-template-columns:minmax(0,5fr) minmax(0,6fr);align-items:start}.col-left{position:sticky;top:12px}}
+@media (min-width:960px){.grid{grid-template-columns:minmax(0,5fr) minmax(0,6fr);align-items:start}.col-left{position:sticky;top:12px}.transcript-card{display:flex;flex-direction:column;max-height:calc(100vh - 24px);position:sticky;top:12px}.transcript-card .transcript{overflow:auto;overscroll-behavior:contain;flex:1 1 auto;min-height:0}}
 .col-left,.col-right{display:grid;gap:14px;min-width:0}
 
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
@@ -1008,7 +1008,7 @@ function runAnalysis(take){
     if (DB.attempts.length>1000) DB.attempts.splice(0, DB.attempts.length-1000);
     save(); schedulePush();
     renderResult(result); renderTranscript(); renderProgress(); renderRecState(); renderStage();
-    if (window.innerWidth<960){ var rc = $('#result'); if (rc && rc.scrollIntoView) rc.scrollIntoView({block:'start', behavior:'smooth'}); }
+    if (window.innerWidth<960){ var rc = $('#result'); if (rc && rc.scrollIntoView) rc.scrollIntoView({block:'nearest', behavior:'smooth'}); }
   });
 }
 
@@ -1120,7 +1120,16 @@ function renderActive(scroll){
   var act = S.liveIdx != null ? S.liveIdx : S.idx;
   items.forEach(function(b, i){ b.classList.toggle('active', i===act); b.classList.toggle('in-range', inRange(i)); });
   renderStage();
-  if (scroll && items[act] && performance.now()-S.lastScroll>2500){ try{ items[act].scrollIntoView({block:'center', behavior:'smooth'}); }catch(e){} }
+  if (scroll && items[act]) followLine(items[act]);
+}
+/* Keep the playing line visible without moving the page: only the transcript list scrolls, and only on wide screens. */
+function followLine(item){
+  if (window.innerWidth < 960) return;
+  var box = $('#transcript');
+  if (!box || box.scrollHeight <= box.clientHeight + 4) return;
+  if (performance.now()-S.lastScroll < 2500) return;
+  var top = item.offsetTop - box.offsetTop - box.clientHeight/2 + item.offsetHeight/2;
+  try{ box.scrollTo({top:Math.max(0, top), behavior:'smooth'}); }catch(e){ box.scrollTop = Math.max(0, top); }
 }
 function bestScores(){
   var best = {};
@@ -1495,7 +1504,7 @@ $('#btnModel').addEventListener('click', function(){ var r = S.lastResult; if (r
 $('#btnMine').addEventListener('click', function(){ var a = $('#mine'); if (!a.src) return; if (S.playing) pause(); try{ a.currentTime = 0; a.play(); }catch(e){} });
 $('#btnRetry').addEventListener('click', function(){ var r = S.lastResult; if (r && !isAll()){ S.idx = r.take.i; S.liveIdx = r.take.i; renderActive(false); } startTake(); });
 $('#btnNextLine').addEventListener('click', function(){ var r = S.lastResult; if (r){ if (isAll()){ DB.settings.chunk = 1; save(); renderChips(); } S.idx = Math.min(S.lines.length-1, r.take.i + r.take.n); S.liveIdx = S.idx; S.reveal = false; renderActive(true); } });
-['wheel','touchmove'].forEach(function(evn){ window.addEventListener(evn, function(){ S.lastScroll = performance.now(); }, {passive:true}); });
+['wheel','touchmove'].forEach(function(evn){ $('#transcript').addEventListener(evn, function(){ S.lastScroll = performance.now(); }, {passive:true}); });
 document.addEventListener('keydown', function(e){
   var tag = (e.target && e.target.tagName) || '';
   if (tag==='TEXTAREA' || tag==='INPUT' || $$('dialog[open]').length) return;
