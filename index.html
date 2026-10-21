@@ -375,7 +375,7 @@ So I'd like to start by…
       <li><b>動画を選ぶ</b>：「ライブラリ」で YouTube の URL を追加（不要な動画は削除）。スクリプトは動画ごとに保存されます。</li>
       <li><b>スクリプトを貼る</b>：YouTube の「文字起こしを表示」からコピー。行をタップするとその場面に飛びます。</li>
       <li><b>お手本を聞く</b>：▶ お手本で今の行だけ再生。「ループ」でその行を繰り返し。速度は 0.5〜1.5 倍。</li>
-      <li><b>録音して練習</b>：「同時」はお手本と一緒に声を出す（シャドーイング）。「後追い」はお手本の後に自分だけで言う（リピーティング）。単位を「全体」にするとトーク全体を一気に録音でき、終わると行ごとのスコアが出ます（途中で止めるときは録音ボタンをもう一度）。</li>
+      <li><b>録音して練習</b>：「同時」はお手本と一緒に声を出す（シャドーイング）。「後追い」はお手本の後に自分だけで言う（リピーティング）。単位を「全体」にするとトーク全体を一気に録音でき、終わると行ごとのスコアが出ます（途中で止めるときは録音ボタンをもう一度）。録音はお手本の音声が実際に始まった瞬間から開始されるので、YouTube の広告は録音に入りません。</li>
       <li><b>マイク</b>：イヤホンなら「素のまま」。スピーカーで聞きながら話すときは「エコー除去」にすると動画の音が録音に入りにくくなりますが、自分の声も削られやすくなります。</li>
       <li><b>結果を見る</b>：赤＝言えていない語、黄＝近い語。ヒントに沿って同じ行をやり直し、70% を超えたら速度を上げる／スクリプトを「ぼかし」→「非表示」へ。</li>
     </ol>
@@ -727,6 +727,11 @@ function lineAt(t){
   return best;
 }
 function tick(){
+  if (S.take && S.take.phase==='waitplay'){
+    var tk = S.take, tt = nowTime();
+    if (S.playing && S.seg && tt >= tk.start - 0.5 && tt <= tk.end){ beginRecording(tk); }
+    else if (performance.now() - tk.waitSince > 120000){ pause(); abortTake(tk); toast('お手本の再生を2分待ちましたが始まらないため中止しました'); }
+  }
   if (S.take && S.take.phase==='record'){
     var sec = Math.floor((performance.now()-S.take.recStart)/1000);
     if (sec !== S.take.lastSec){ S.take.lastSec = sec; $('#btnRecLabel').textContent = '録音中 ' + C.fmt(sec) + '… タップで終了'; $('#dockRecLabel').textContent = '録音中 ' + C.fmt(sec); }
@@ -789,7 +794,7 @@ function pickMime(){
 function startTake(){
   if (S.take){
     if (S.take.phase==='record') finishRecording(S.take);
-    else if (S.take.phase==='listen'){ pause(); abortTake(S.take); }
+    else if (S.take.phase==='listen' || S.take.phase==='waitplay'){ pause(); abortTake(S.take); toast('中止しました'); }
     return;
   }
   if (!S.lines.length){ openSetup(); return; }
@@ -805,8 +810,11 @@ function startTake(){
   micP.then(function(stream){ take.stream = stream; }, function(){ take.stream = null; toast('マイクが使えないため、音声認識のみで進めます'); }).then(function(){
     if (S.take !== take) { stopStream(take); return; }
     if (take.mode==='shadow'){
-      beginRecording(take);
-      playRange(i, n, {onEnd:function(){ setTimeout(function(){ finishRecording(take); }, 700); }});
+      take.phase = 'waitplay'; take.waitSince = performance.now(); renderRecState();
+      playRange(i, n, {onEnd:function(){
+        if (take.phase==='waitplay'){ abortTake(take); toast('お手本が再生されなかったため中止しました'); return; }
+        setTimeout(function(){ finishRecording(take); }, 700);
+      }});
     } else {
       take.phase = 'listen'; renderRecState();
       playRange(i, n, {onEnd:function(){
@@ -1006,6 +1014,7 @@ function renderRecState(){
   var cls = 'rec', text, short;
   if (!t){ text = DB.settings.mode==='shadow' ? '録音して練習（同時）' : '録音して練習（後追い）'; short = '録音'; }
   else if (t.phase==='init'){ cls += ' busy'; text = 'マイクを準備中…'; short = '準備中'; }
+  else if (t.phase==='waitplay'){ cls += ' listen'; text = 'お手本の再生待ち（広告中は待機）… タップで中止'; short = '再生待ち'; }
   else if (t.phase==='listen'){ cls += ' listen'; text = 'お手本を聞いています… タップで中止'; short = '聞いています'; }
   else if (t.phase==='record'){ cls += ' live'; text = '録音中… タップで終了'; short = '録音中'; }
   else { cls += ' busy'; text = '分析中…'; short = '分析中'; }
