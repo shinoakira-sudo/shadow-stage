@@ -261,7 +261,7 @@ a{color:var(--accent)}
           <button id="btnNext" class="btn">次 ▶</button>
         </div>
         <button id="btnRec" class="rec"><span class="dot"></span><span id="btnRecLabel">録音して練習</span></button>
-        <p class="hint" id="micHint">イヤホン推奨。「素のまま」が一番きれいに録れます。スピーカーで聞くときだけ「エコー除去」に。</p>
+        <p class="hint" id="micHint">イヤホン推奨（YouTube の音が録音と採点に混ざりません）。スピーカーで聞くときは「エコー除去」に。</p>
       </div>
 
       <div class="card result" id="result" hidden>
@@ -383,7 +383,7 @@ So I'd like to start by…
       <li><b>録音して練習</b>：「同時」はお手本と一緒に声を出す（シャドーイング）。「後追い」はお手本の後に自分だけで言う（リピーティング）。単位を「全体」にするとトーク全体を一気に録音でき、終わると行ごとのスコアが出ます（途中で止めるときは録音ボタンをもう一度）。録音はお手本の音声が実際に始まった瞬間から開始されるので、YouTube の広告は録音に入りません。</li>
       <li><b>時間のずれ</b>：4行以上を「同時」で録音すると、認識された語の到着時刻からスクリプトの推定時刻（〜印の行）を自動補正します（≈印になります）。手動では、大きな表示の「⏱ 開始をここに」でいま再生中の位置をその行の開始にでき、「貼り付け / 編集」の「全体の時間をずらす」で全行を一括でずらせます。</li>
       <li><b>遅れについて</b>：シャドーイングは聞いてから言うので、自分の声が0.3〜1.3秒遅れるのは正常です。採点は語の一致で行い遅れは減点しません。録音は言い終わって静かになるまで続きます。結果に「出だしの遅れ」が出ます。</li>
-      <li><b>マイク</b>：イヤホンなら「素のまま」。スピーカーで聞きながら話すときは「エコー除去」にすると動画の音が録音に入りにくくなりますが、自分の声も削られやすくなります。</li>
+      <li><b>マイク</b>：イヤホンなら「素のまま」が最もきれいです。スピーカーで聞きながら話すと、マイクが動画の音を拾って録音と採点に混ざります。その場合は「エコー除去」に切り替えてください（録音中はお手本の音量も自動で少し下げます）。ただし同時に話している間は自分の声も削られやすく、完全には防げません。</li>
       <li><b>結果を見る</b>：赤＝言えていない語、黄＝近い語。ヒントに沿って同じ行をやり直し、70% を超えたら速度を上げる／スクリプトを「ぼかし」→「非表示」へ。</li>
     </ol>
     <p class="note">「ライブラリ」の同期コードを各端末で入れると、動画・スクリプト・記録が端末間で共有されます（Supabase に保存）。コードを入れない端末ではブラウザ内だけに保存されます。</p>
@@ -868,6 +868,8 @@ function startTake(){
   S.take = take; renderRecState();
   try{ var AC0 = window.AudioContext || window.webkitAudioContext; if (AC0){ take.actx = new AC0(); if (take.actx.state==='suspended') take.actx.resume().catch(function(){}); } }catch(e){}
   var aec = DB.settings.mic === 'aec';
+  take.aec = aec;
+  if (aec && S.ready){ try{ take.prevVol = S.player.getVolume(); if (take.prevVol > 55) S.player.setVolume(55); }catch(e){} }
   var cons = {audio:{echoCancellation:aec, noiseSuppression:aec, autoGainControl:true, channelCount:1}};
   var micP = (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) ? navigator.mediaDevices.getUserMedia(cons) : Promise.reject(new Error('unsupported'));
   micP.then(function(stream){ take.stream = stream; }, function(){ take.stream = null; toast('マイクが使えないため、音声認識のみで進めます'); }).then(function(){
@@ -968,7 +970,7 @@ function finishRecording(take){
   renderRecState();
   maybeAnalyze(take);
 }
-function closeMeter(take){ try{ if (take.actx){ take.actx.close(); take.actx = null; } }catch(e){} take.analyser = null; }
+function closeMeter(take){ try{ if (take.actx){ take.actx.close(); take.actx = null; } }catch(e){} take.analyser = null; if (take.prevVol != null){ try{ S.player.setVolume(take.prevVol); }catch(e){} take.prevVol = null; } }
 function maybeAnalyze(take){
   if (take.analyzed || !take.recDone || !take.recogEnded) return;
   take.analyzed = true;
@@ -1254,6 +1256,9 @@ function buildAdvice(r){
   }
   var cats = Object.keys(a.issues).map(function(k){ return [k, a.issues[k]]; }).sort(function(x,y){ return y[1].length-x[1].length; }).slice(0,2);
   cats.forEach(function(c){ var ad = C.ADVICE[c[0]]; var uniq = []; c[1].forEach(function(w){ if (uniq.indexOf(w)<0) uniq.push(w); }); items.push({label:ad.label, tip:ad.tip, words:uniq.slice(0,8)}); });
+  if (r.take.mode==='shadow' && !r.take.aec && r.span && r.span.span > 0 && r.span.first < 0.15 && r.span.ratio > 0.5){
+    items.unshift({label:'録音にお手本の音が入っているかも', tip:'出だしがほぼ0秒で音が始まっています。マイクがスピーカーの音を拾っている可能性が高く、採点にもお手本の声が混ざります。確実なのはイヤホンです。スピーカーのままなら「エコー除去」に切り替えると混入が減ります（代わりに自分の声が少し削られます）。', action:{label:'エコー除去に切り替える', fn:function(){ DB.settings.mic = 'aec'; save(); renderChips(); toast('マイクを「エコー除去（スピーカー）」にしました。次の録音から有効です'); }}});
+  }
   if (r.timing && r.timing.ok && Math.abs(r.timing.shift) >= 1.5) items.push({label:'スクリプト全体のずれ', tip:'元の時刻付きの行でも約 ' + Math.abs(r.timing.shift).toFixed(1) + ' 秒' + (r.timing.shift>0 ? '遅れて' : '早く') + '話されています。動画の冒頭に前置きがある場合などです。', action:{label:'全体を ' + (r.timing.shift>0 ? '+' : '') + (r.timing.shift).toFixed(1) + ' 秒ずらす', fn:function(){ if (shiftAllCues(r.timing.shift)) toast('スクリプト全体をずらしました'); }}});
   if (r.take.n > 4 && r.hyp) items.push({label:'全体の見方', tip:'上の「落ちた行」から弱い行だけ1行単位でやり直し、70%を超えたらまた全体を通す。スクリプト一覧の行ごとの％が更新されています。'});
   if (a.score>=90) items.push({label:'次の負荷', tip: r.take.rate<1.25 ? '速度を一段上げるか、スクリプトを「ぼかし」にして同じ行を。' : 'スクリプト「非表示」で、単位を 4 行にして通し練習へ。'});
