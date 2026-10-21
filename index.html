@@ -444,7 +444,8 @@ window.ShadowCore = (function(){
   function buildLines(cues, opts){
     opts = opts || {};
     var splitLong = opts.splitLong!==false, longWords = opts.longWords||22, duration = opts.duration||null;
-    var sorted = (cues||[]).slice().sort(function(a,b){ return a.start-b.start; });
+    var CREDIT_RE = /^(?:Transcriber|Translator|Reviewer|Translated by|Reviewed by)\s*:?/i;
+    var sorted = (cues||[]).filter(function(c){ return c && c.text && !CREDIT_RE.test(c.text); }).sort(function(a,b){ return a.start-b.start; });
     var lines = [];
     sorted.forEach(function(c,i){
       var next = i+1<sorted.length ? sorted[i+1].start : null;
