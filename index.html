@@ -634,15 +634,14 @@ function playRange(i, n, opts){
   var b = rangeEnd(i, n);
   S.idx = i;
   S.seg = {start:a.start, end:b.end, loop:!!opts.loop, onEnd:opts.onEnd||null};
-  try{
-    if (S.unlocked){ S.player.seekTo(a.start, true); S.player.playVideo(); }
-    else { S.player.loadVideoById({videoId:DB.videoId, startSeconds:a.start}); }
-  }catch(e){}
+  try{ S.player.seekTo(a.start, true); S.player.playVideo(); }catch(e){}
   setTimeout(applySpeed, 300);
   clearTimeout(S.unlockTimer);
-  S.unlockTimer = setTimeout(function(){
-    if (!S.playing && S.seg && performance.now()-S.hintAt>8000){ S.hintAt = performance.now(); toast('最初の1回は、動画の再生ボタンを直接タップしてください（スマホの制限）'); }
-  }, 1800);
+  if (!S.unlocked && window.matchMedia && window.matchMedia('(pointer: coarse)').matches){
+    S.unlockTimer = setTimeout(function(){
+      if (!S.playing && S.seg && performance.now()-S.hintAt>8000){ S.hintAt = performance.now(); toast('最初の1回は、動画の再生ボタンを直接タップしてください（スマホの制限）'); }
+    }, 2500);
+  }
   renderActive(false);
   renderButtons();
 }
