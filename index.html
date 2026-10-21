@@ -77,6 +77,11 @@ h1,h2,h3{margin:0;text-wrap:balance}
 .stage-text{font-family:var(--font-script);font-size:clamp(1.25rem,1.1rem + .9vw,1.6rem);line-height:1.45;margin:8px 0 0;min-height:2.6em;transition:filter .2s;overflow-wrap:anywhere}
 .stage-text.blur{filter:blur(7px);user-select:none;-webkit-user-select:none}
 .stage-text.masked{color:var(--muted);font-family:var(--font-ui);font-size:1rem}
+.stage-text.jaonly{font-family:var(--font-ui);font-size:clamp(1.1rem,1rem + .6vw,1.35rem);line-height:1.6}
+.stage-ja{margin:8px 0 0;font-family:var(--font-ui);font-size:1rem;line-height:1.6;color:var(--muted);overflow-wrap:anywhere}
+.stage-ja.missing{font-size:.85rem}
+.line .ja{display:block;font-family:var(--font-ui);font-size:.86rem;line-height:1.5;color:var(--muted);margin-top:2px;overflow-wrap:anywhere}
+.line .txt.jaonly{font-family:var(--font-ui);font-size:.95rem}
 .stage-live{margin-top:10px;padding:8px 10px;border-radius:8px;background:var(--surface-2);font-family:var(--font-script);color:var(--muted);min-height:2.2em;overflow-wrap:anywhere}
 .stage-live b{color:var(--fg);font-weight:400}
 
@@ -170,6 +175,7 @@ dialog{border:0;border-radius:16px;background:var(--surface);color:var(--fg);pad
 dialog::backdrop{background:rgba(5,10,15,.55)}
 .dlg-body{padding:16px;display:grid;gap:12px}
 .dlg-body h2{font-size:1.05rem}
+.dlg-body textarea.ja-area{min-height:110px}
 .dlg-body textarea{width:100%;min-height:200px;max-height:40vh;border:1px solid var(--line);border-radius:10px;padding:10px;font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--surface-2);color:var(--fg);resize:vertical}
 .shift-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:.85rem}
 .shift-row input{width:5em;border:1px solid var(--line);border-radius:8px;padding:6px 8px;background:var(--surface-2);color:var(--fg);font:inherit}
@@ -245,12 +251,14 @@ a{color:var(--accent)}
           <button id="btnReveal" class="ghost small" hidden>見る</button>
         </div>
         <p id="stageText" class="stage-text">スクリプトを貼り付けると、ここに今の行が大きく表示されます。</p>
+        <p id="stageJa" class="stage-ja" hidden></p>
         <div id="stageLive" class="stage-live" hidden></div>
       </div>
 
       <div class="card transport">
         <div class="row"><span class="lbl">モード</span><div class="chips" id="modeChips"></div></div>
-        <div class="row"><span class="lbl">スクリプト</span><div class="chips" id="scriptChips"></div></div>
+        <div class="row"><span class="lbl">スクリプト</span><div class="chips" id="scriptChips"></div>
+          <label class="toggle" id="blurWrap"><input type="checkbox" id="blurToggle"> 英語をぼかす</label></div>
         <div class="row"><span class="lbl">速度</span><div class="chips" id="speedChips"></div></div>
         <div class="row"><span class="lbl">単位</span><div class="chips" id="chunkChips"></div>
           <label class="toggle"><input type="checkbox" id="loopToggle"> ループ</label></div>
@@ -335,8 +343,14 @@ a{color:var(--accent)}
       <li>YouTube の文字起こしパネル（時間 + テキスト）、TED.com の Transcript、または SRT / VTT の中身をそのまま貼ります。</li>
       <li>「読み込む」で行に分かれます。時間が段落単位のときは、文ごとに時間を推定して分けます（〜印）。</li>
     </ol>
+    <label class="note" for="tx">英語（必須）</label>
     <textarea id="tx" placeholder="0:03
 So I'd like to start by…
+0:07
+…" spellcheck="false"></textarea>
+    <label class="note" for="txJa">日本語（任意）：YouTube の文字起こしパネルで言語を「日本語」に切り替えてコピー。時間付きなら英語の行に自動で対応付けます。時間なしの訳文でも行数が合えば1行ずつ対応します</label>
+    <textarea id="txJa" class="ja-area" placeholder="0:03
+まず最初にお話ししたいのは…
 0:07
 …" spellcheck="false"></textarea>
     <label class="toggle" style="margin-left:0"><input type="checkbox" id="splitLong" checked> 長い段落は文ごとに分ける（時間は推定）</label>
@@ -384,11 +398,12 @@ So I'd like to start by…
       <li><b>時間のずれ</b>：4行以上を「同時」で録音すると、認識された語の到着時刻からスクリプトの推定時刻（〜印の行）を自動補正します（≈印になります）。手動では、大きな表示の「⏱ 開始をここに」でいま再生中の位置をその行の開始にでき、「貼り付け / 編集」の「全体の時間をずらす」で全行を一括でずらせます。</li>
       <li><b>遅れについて</b>：シャドーイングは聞いてから言うので、自分の声が0.3〜1.3秒遅れるのは正常です。採点は語の一致で行い遅れは減点しません。録音は言い終わって静かになるまで続きます。結果に「出だしの遅れ」が出ます。</li>
       <li><b>マイク</b>：イヤホンなら「素のまま」が最もきれいです。スピーカーで聞きながら話すと、マイクが動画の音を拾って録音と採点に混ざります。その場合は「エコー除去」に切り替えてください（録音中はお手本の音量も自動で少し下げます）。ただし同時に話している間は自分の声も削られやすく、完全には防げません。</li>
-      <li><b>結果を見る</b>：赤＝言えていない語、黄＝近い語。ヒントに沿って同じ行をやり直し、70% を超えたら速度を上げる／スクリプトを「ぼかし」→「非表示」へ。</li>
+      <li><b>スクリプトの表示</b>：「英語」「日本語」「英日」「なし」を切り替えられます。「英語をぼかす」で英語だけ隠して日本語をヒントにする練習もできます。日本語は「貼り付け / 編集」の下の欄に、YouTube の文字起こしを日本語字幕に切り替えてコピーしたものを貼ります（時間で英語の行に対応付け）。</li>
+      <li><b>結果を見る</b>：赤＝言えていない語、黄＝近い語。ヒントに沿って同じ行をやり直し、70% を超えたら速度を上げる／英語を「ぼかす」→「なし」へ。</li>
     </ol>
     <p class="note">「ライブラリ」の同期コードを各端末で入れると、動画・スクリプト・記録が端末間で共有されます（Supabase に保存）。コードを入れない端末ではブラウザ内だけに保存されます。</p>
     <p class="note">分析は音声認識（Chrome / Safari 内蔵）で聞き取れた語とスクリプトの一致率です。発音の良し悪しそのものではなく「通じる英語になっているか」の目安として使ってください。録音した音声そのものは保存されません。</p>
-    <p class="note">キーボード：<span class="kbd">Space</span> 再生/停止　<span class="kbd">←</span><span class="kbd">→</span> 前/次の行　<span class="kbd">R</span> 録音　<span class="kbd">L</span> ループ　<span class="kbd">B</span> スクリプト表示切替　<span class="kbd">V</span> ぼかしを一時解除</p>
+    <p class="note">キーボード：<span class="kbd">Space</span> 再生/停止　<span class="kbd">←</span><span class="kbd">→</span> 前/次の行　<span class="kbd">R</span> 録音　<span class="kbd">L</span> ループ　<span class="kbd">B</span> スクリプト表示切替　<span class="kbd">V</span> 一時的に見る</p>
     <div class="dlg-actions"><button id="btnCloseHelp" class="btn primary">閉じる</button></div>
   </div>
 </dialog>
@@ -406,7 +421,7 @@ window.ShadowCore = (function(){
     var h = m[1]?+m[1]:0, ms = m[4]?+((m[4]+'00').slice(0,3)):0;
     return h*3600 + (+m[2])*60 + (+m[3]) + ms/1000;
   }
-  var STAGE_RE = /\((?:laughter|applause|music|cheers?|cheering|laughs|audience[^)]*|sighs?|inaudible|gasps?)[^)]*\)/gi;
+  var STAGE_RE = /\((?:laughter|applause|music|cheers?|cheering|laughs|audience[^)]*|sighs?|inaudible|gasps?)[^)]*\)|[（(](?:笑い?|拍手|音楽|歓声|ため息)[）)]/gi;
   function cleanText(t){ return String(t||'').replace(STAGE_RE,' ').replace(/\s+/g,' ').trim(); }
 
   function parseTranscript(raw){
@@ -612,6 +627,31 @@ window.ShadowCore = (function(){
     return {ok:true, lag:L, spread:spread, anchors:diffs.length, fixes:fixes, shift: (L > 3 || L < -0.3) ? L - 1.0 : 0};
   }
 
+  /* Attach translation cues to practice lines by time overlap; returns one string per line. */
+  function mapTranslation(lines, ja){
+    var out = lines.map(function(){ return []; });
+    if (!ja || !ja.length || !lines.length) return out.map(function(){ return ''; });
+    var sorted = ja.slice().sort(function(a,b){ return a.start-b.start; });
+    sorted.forEach(function(c, k){
+      var cs = c.start, ce = k+1<sorted.length ? Math.max(sorted[k+1].start, cs+0.5) : cs + 3, best = -1, bestOv = 0, i;
+      for (i=0;i<lines.length;i++){ var ov = Math.min(ce, lines[i].end) - Math.max(cs, lines[i].start); if (ov > bestOv){ bestOv = ov; best = i; } }
+      if (best < 0){ var nd = Infinity; for (i=0;i<lines.length;i++){ var d = Math.abs(lines[i].start - cs); if (d < nd){ nd = d; best = i; } } if (nd > 2.5) return; }
+      out[best].push(c.text);
+    });
+    return out.map(function(arr){ return arr.join(/[\u3040-\u30ff\u4e00-\u9fff]/.test(arr.join('')) ? '' : ' '); });
+  }
+  /* Japanese text without timestamps: pair with lines 1:1 when counts match, else spread in order. */
+  function pairUntimed(lines, text){
+    var items = String(text||'').split(/\n+/).map(function(t){ return t.trim(); }).filter(Boolean);
+    var how = 'lines';
+    if (items.length !== lines.length){
+      var sents = String(text||'').replace(/\s*\n\s*/g, '').split(/(?<=[。！？!?])/).map(function(t){ return t.trim(); }).filter(Boolean);
+      if (sents.length === lines.length){ items = sents; how = 'sentences'; }
+      else { how = 'approx'; var src = sents.length ? sents : items, per = lines.map(function(){ return []; }); src.forEach(function(t, k){ per[Math.min(lines.length-1, Math.floor(k / src.length * lines.length))].push(t); }); items = per.map(function(a){ return a.join(''); }); }
+    }
+    return {how:how, cues: lines.map(function(l, i){ return {start:l.start, text:items[i]||''}; }).filter(function(c){ return c.text; })};
+  }
+
   function speechSpan(samples, sr){
     var win = Math.max(1, Math.floor(sr*0.05)), n = Math.floor(samples.length/win);
     if (n<2) return null;
@@ -631,7 +671,7 @@ window.ShadowCore = (function(){
     return m ? m[1] : null;
   }
 
-  return {parseTranscript:parseTranscript, buildLines:buildLines, tokenize:tokenize, align:align, analyze:analyze, analyzeLines:analyzeLines, estimateTiming:estimateTiming, speechWeight:speechWeight, classify:classify, ADVICE:ADVICE, speechSpan:speechSpan, fmt:fmt, parseYouTubeId:parseYouTubeId, tsToSec:tsToSec, splitSentences:splitSentences};
+  return {parseTranscript:parseTranscript, buildLines:buildLines, tokenize:tokenize, align:align, analyze:analyze, analyzeLines:analyzeLines, estimateTiming:estimateTiming, speechWeight:speechWeight, mapTranslation:mapTranslation, pairUntimed:pairUntimed, classify:classify, ADVICE:ADVICE, speechSpan:speechSpan, fmt:fmt, parseYouTubeId:parseYouTubeId, tsToSec:tsToSec, splitSentences:splitSentences};
 })();
 </script>
 
@@ -653,23 +693,28 @@ var SPEEDS = [0.5,0.75,1,1.25,1.5];
 var CHUNKS = [{k:1, l:'1行'},{k:2, l:'2行'},{k:4, l:'4行'},{k:'all', l:'全体'}];
 var MICS = [{k:'raw', l:'素のまま（イヤホン）'},{k:'aec', l:'エコー除去（スピーカー）'}];
 var MODES = [{k:'shadow', l:'同時（シャドーイング）'},{k:'repeat', l:'後追い（リピート）'}];
-var SCRIPTS = [{k:'show', l:'表示'},{k:'blur', l:'ぼかし'},{k:'hide', l:'非表示'}];
+var SCRIPTS = [{k:'en', l:'英語'},{k:'ja', l:'日本語'},{k:'both', l:'英日'},{k:'none', l:'なし'}];
 
 var KEY = 'shadowstage.v1';
 var PRESET_IDS = PRESETS.map(function(p){ return p.id; });
-var DB = {videoId:null, videos:{}, attempts:[], settings:{mode:'shadow', script:'show', speed:1, chunk:1, loop:false, split:true, mic:'raw'}, sync:{code:'', last:0}};
+var DB = {videoId:null, videos:{}, attempts:[], settings:{mode:'shadow', script:'en', speed:1, chunk:1, loop:false, split:true, mic:'raw', blur:false}, sync:{code:'', last:0}};
 function newCid(){ return 'a' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 function load(){
   try{ var j=localStorage.getItem(KEY); if(j){ var d=JSON.parse(j); if(d && typeof d==='object'){ DB.videoId=d.videoId||null; DB.videos=d.videos||{}; DB.attempts=d.attempts||[]; DB.settings=Object.assign(DB.settings, d.settings||{}); DB.sync=Object.assign(DB.sync, d.sync||{}); } } }catch(e){}
   var now = Date.now(), k = 0;
+  if (DB.settings.script === 'show') DB.settings.script = 'en';
+  else if (DB.settings.script === 'blur'){ DB.settings.script = 'en'; DB.settings.blur = true; }
+  else if (DB.settings.script === 'hide') DB.settings.script = 'none';
+  if (['en','ja','both','none'].indexOf(DB.settings.script) < 0) DB.settings.script = 'en';
   Object.keys(DB.videos).forEach(function(id){
     var v = DB.videos[id]; if (!v || typeof v!=='object'){ delete DB.videos[id]; return; }
     if (!Array.isArray(v.cues)) v.cues = [];
+    if (!Array.isArray(v.ja)) v.ja = []; if (typeof v.jaRaw !== 'string') v.jaRaw = '';
     if (typeof v.updated_at !== 'number'){ v.updated_at = v.cues.length ? now : 0; v.dirty = v.cues.length > 0; }
     if (typeof v.added !== 'number'){ var pi = PRESET_IDS.indexOf(id); v.added = pi >= 0 ? pi : now + (k++); }
   });
   DB.attempts.forEach(function(a, i){ if (!a.cid){ a.cid = 'm' + (a.ts||now) + '-' + i; a.synced = false; } });
-  PRESETS.forEach(function(p, i){ if (!DB.videos[p.id]) DB.videos[p.id] = {title:p.title + ' | ' + p.speaker, speaker:p.speaker, note:'', dur:0, raw:'', cues:[], deleted:false, updated_at:0, added:i, dirty:false}; });
+  PRESETS.forEach(function(p, i){ if (!DB.videos[p.id]) DB.videos[p.id] = {title:p.title + ' | ' + p.speaker, speaker:p.speaker, note:'', dur:0, raw:'', cues:[], jaRaw:'', ja:[], deleted:false, updated_at:0, added:i, dirty:false}; });
   var m = (location.hash||'').match(/^#sync=([A-Za-z0-9_-]{4,64})$/);
   if (m){ if (m[1] !== DB.sync.code) markAllForPush(); DB.sync.code = m[1]; DB.sync.last = 0; try{ history.replaceState(null, '', location.pathname + location.search); }catch(e){} }
 }
@@ -699,7 +744,7 @@ function setVideo(id){
 function addVideo(id){
   var v = DB.videos[id];
   if (v && !v.deleted){ setVideo(id); return 'exists'; }
-  DB.videos[id] = {title:(v && v.title) || '', speaker:'', note:'', dur:(v && v.dur) || 0, raw:(v && v.raw) || '', cues:(v && v.cues) || [], deleted:false, updated_at:0, added:Date.now(), dirty:true};
+  DB.videos[id] = {title:(v && v.title) || '', speaker:'', note:'', dur:(v && v.dur) || 0, raw:(v && v.raw) || '', cues:(v && v.cues) || [], jaRaw:(v && v.jaRaw) || '', ja:(v && v.ja) || [], deleted:false, updated_at:0, added:Date.now(), dirty:true};
   touch(DB.videos[id]);
   setVideo(id); schedulePush();
   return 'added';
@@ -724,7 +769,7 @@ function pickAnyVideo(){
   showPlayerNote('動画がありません。「ライブラリ」から YouTube の URL を追加してください。');
   renderAll();
 }
-function rebuildLines(){ var v = currentVideo(); S.lines = v ? C.buildLines(v.cues, {splitLong:DB.settings.split, duration:S.duration||null}) : []; if (S.idx>=S.lines.length) S.idx = Math.max(0, S.lines.length-1); }
+function rebuildLines(){ var v = currentVideo(); S.lines = v ? C.buildLines(v.cues, {splitLong:DB.settings.split, duration:S.duration||null}) : []; if (v && v.ja && v.ja.length){ var ja = C.mapTranslation(S.lines, v.ja); S.lines.forEach(function(l, i){ l.ja = ja[i] || ''; }); } if (S.idx>=S.lines.length) S.idx = Math.max(0, S.lines.length-1); }
 
 function createPlayer(){
   var vars = {playsinline:1, rel:0, modestbranding:1, controls:1, iv_load_policy:3, fs:1};
@@ -1063,6 +1108,8 @@ function chipGroup(host, items, current, onPick){
 function renderChips(){
   chipGroup($('#modeChips'), MODES, DB.settings.mode, function(k){ DB.settings.mode = k; save(); renderChips(); renderRecState(); });
   chipGroup($('#scriptChips'), SCRIPTS, DB.settings.script, function(k){ DB.settings.script = k; S.reveal = false; save(); renderChips(); renderStage(); renderTranscript(); });
+  $('#blurToggle').checked = !!DB.settings.blur;
+  $('#blurWrap').hidden = !(DB.settings.script === 'en' || DB.settings.script === 'both');
   chipGroup($('#speedChips'), SPEEDS.map(function(s){ return {k:s, l:s.toFixed(2).replace(/0$/,'') + 'x'}; }), DB.settings.speed, function(k){ DB.settings.speed = k; save(); applySpeed(); renderChips(); });
   chipGroup($('#chunkChips'), CHUNKS, DB.settings.chunk, function(k){ DB.settings.chunk = k; save(); renderChips(); renderActive(false); renderResult(S.lastResult); });
   chipGroup($('#micChips'), MICS, DB.settings.mic || 'raw', function(k){ DB.settings.mic = k; save(); renderChips(); });
@@ -1078,10 +1125,18 @@ function renderStage(){
   var li = S.liveIdx != null ? S.liveIdx : S.idx;
   pos.textContent = isAll() ? ('全体 ' + (li+1) + ' / ' + S.lines.length) : ((S.idx+1) + ' / ' + S.lines.length + (chunkN()>1 ? ' （' + chunkN() + '行）' : ''));
   $('#stageTime').textContent = rangeLabel();
-  var mode = DB.settings.script;
-  if (mode==='hide' && !S.reveal){ var wc = rangeText().split(/\s+/).length; st.textContent = '（非表示 ・ ' + wc + ' 語）'; st.classList.add('masked'); rv.hidden = false; rv.textContent = '見る'; }
-  else { st.textContent = rangeText(); if (mode==='blur' && !S.reveal) st.classList.add('blur'); rv.hidden = (mode==='show'); rv.textContent = S.reveal ? '隠す' : '見る'; }
+  var mode = DB.settings.script, sj = $('#stageJa');
+  st.classList.remove('jaonly'); sj.hidden = true; sj.textContent = ''; sj.classList.remove('missing');
+  var showEn = S.reveal || mode==='en' || mode==='both', showJa = S.reveal || mode==='ja' || mode==='both';
+  var jaText = rangeJa();
+  if (mode==='none' && !S.reveal){ var wc = rangeText().split(/\s+/).length; st.textContent = '（非表示 ・ ' + wc + ' 語）'; st.classList.add('masked'); rv.hidden = false; rv.textContent = '見る'; return; }
+  if (showEn){ st.textContent = rangeText(); if (DB.settings.blur && !S.reveal) st.classList.add('blur'); }
+  else { st.textContent = jaText || '（この行の日本語はありません）'; st.classList.add('jaonly'); if (!jaText) st.classList.add('masked'); }
+  if (showEn && showJa){ sj.hidden = false; if (jaText) sj.textContent = jaText; else { sj.textContent = currentVideo() && currentVideo().ja && currentVideo().ja.length ? '（この行の日本語はありません）' : '（日本語は未登録。「貼り付け / 編集」で追加できます）'; sj.classList.add('missing'); } }
+  var canReveal = mode==='none' || (DB.settings.blur && showEn) || mode==='ja';
+  rv.hidden = !canReveal; rv.textContent = S.reveal ? '隠す' : '見る';
 }
+function rangeJa(){ var ls = isAll() ? [S.lines[S.liveIdx != null ? S.liveIdx : S.idx] || S.lines[0]] : S.lines.slice(S.idx, S.idx + chunkN()); return ls.filter(Boolean).map(function(l){ return l.ja || ''; }).filter(Boolean).join(' '); }
 function renderLive(take){
   var live = $('#stageLive');
   if (!take || take.phase!=='record'){ live.hidden = true; live.innerHTML = ''; return; }
@@ -1103,8 +1158,13 @@ function renderTranscript(){
     var b = el('button', 'line'); b.type = 'button'; b.dataset.i = i;
     var tc = el('span', 'tc', (ln.est ? '〜' : ln.fix ? '≈' : '') + C.fmt(ln.start));
     var tx = el('span', 'txt');
-    if (mode==='hide' && !(S.reveal && inRange(i))){ var mask = el('span', 'mask'); mask.style.width = Math.min(100, 18 + ln.text.split(/\s+/).length*7) + '%'; tx.appendChild(mask); tx.setAttribute('aria-label', '非表示'); }
-    else { tx.textContent = ln.text; if (mode==='blur' && !(S.reveal && inRange(i))) tx.classList.add('blur'); }
+    var revealed = S.reveal && (inRange(i) || isAll());
+    if (mode==='none' && !revealed){ var mask = el('span', 'mask'); mask.style.width = Math.min(100, 18 + ln.text.split(/\s+/).length*7) + '%'; tx.appendChild(mask); tx.setAttribute('aria-label', '非表示'); }
+    else if (mode==='ja' && !revealed){ tx.textContent = ln.ja || '（日本語なし）'; tx.classList.add('jaonly'); }
+    else {
+      tx.textContent = ln.text; if (DB.settings.blur && !revealed && mode!=='none') tx.classList.add('blur');
+      if ((mode==='both' || revealed) && ln.ja) tx.appendChild(el('span', 'ja', ln.ja));
+    }
     var s = best[i];
     var sc = el('span', 'sc' + (s==null ? '' : s>=90 ? ' good' : s>=70 ? ' mid' : ' low'), s==null ? '·' : s + '%');
     b.appendChild(tc); b.appendChild(tx); b.appendChild(sc);
@@ -1294,17 +1354,26 @@ function renderProgress(){
 /* ---------- dialogs ---------- */
 function openDlg(d){ try{ if (!d.open) d.showModal(); }catch(e){ d.setAttribute('open',''); } }
 function closeDlg(d){ try{ d.close(); }catch(e){ d.removeAttribute('open'); } }
-function openSetup(){ var v = currentVideo(); $('#tx').value = (v && v.raw) || ''; $('#splitLong').checked = DB.settings.split!==false; openDlg($('#setupDlg')); setTimeout(function(){ $('#tx').focus(); }, 50); }
+function openSetup(){ var v = currentVideo(); $('#tx').value = (v && v.raw) || ''; $('#txJa').value = (v && v.jaRaw) || ''; $('#splitLong').checked = DB.settings.split!==false; openDlg($('#setupDlg')); setTimeout(function(){ $('#tx').focus(); }, 50); }
 function parseAndLoad(){
   var raw = $('#tx').value;
   var cues = C.parseTranscript(raw);
   if (!cues.length){ toast('時間付きの行が見つかりません。0:03 のような時間とテキストが並んだ形で貼ってください'); return; }
   var v = currentVideo(); if (!v){ toast('先に動画を選んでください'); return; }
-  v.raw = raw; v.cues = cues; touch(v); DB.settings.split = $('#splitLong').checked; save(); schedulePush();
+  v.raw = raw; v.cues = cues; touch(v); DB.settings.split = $('#splitLong').checked;
+  var jaRaw = $('#txJa').value, jaMsg = '';
+  if (jaRaw.trim()){
+    var tmpLines = C.buildLines(cues, {splitLong:DB.settings.split, duration:S.duration||null});
+    var jaCues = C.parseTranscript(jaRaw);
+    if (jaCues.length){ v.ja = jaCues; jaMsg = '・日本語 ' + jaCues.length + ' 件を時間で対応付け'; }
+    else { var pr = C.pairUntimed(tmpLines, jaRaw); v.ja = pr.cues; jaMsg = '・日本語を' + (pr.how==='approx' ? '順番で概算対応（行数が合わないため）' : '1行ずつ対応') ; }
+    v.jaRaw = jaRaw;
+  } else { v.ja = []; v.jaRaw = ''; }
+  save(); schedulePush();
   rebuildLines(); S.idx = 0; S.liveIdx = null; S.reveal = false;
   closeDlg($('#setupDlg'));
   renderAll();
-  toast(S.lines.length + ' 行を読み込みました（この動画に保存' + (DB.sync.code ? '・同期' : '') + '）');
+  toast(S.lines.length + ' 行を読み込みました' + jaMsg + '（この動画に保存' + (DB.sync.code ? '・同期' : '') + '）');
 }
 function fmtDur(d){ return d ? C.fmt(d) : ''; }
 function tagsOf(v){ return String(v.note||'').split(' / ').map(function(t){ return t.trim(); }).filter(Boolean); }
@@ -1346,7 +1415,7 @@ function renderLibrary(){
     var sub = el('div', 'sub');
     if (v.dur) sub.appendChild(el('span', null, fmtDur(v.dur)));
     var lines = v.cues.length ? C.buildLines(v.cues, {splitLong:DB.settings.split}).length : 0;
-    sub.appendChild(el('span', lines ? 'ok' : '', lines ? 'スクリプト ' + lines + ' 行' : 'スクリプト未登録'));
+    sub.appendChild(el('span', lines ? 'ok' : '', lines ? 'スクリプト ' + lines + ' 行' + (v.ja && v.ja.length ? '・日本語あり' : '') : 'スクリプト未登録'));
     if (best[id]) sub.appendChild(el('span', null, '平均 ' + Math.round(best[id].sum/best[id].n) + '%・' + best[id].n + ' 回'));
     if (S.libTag === 'all') tagsOf(v).forEach(function(t){ sub.appendChild(el('span', 'tag', t)); });
     main.appendChild(sub);
@@ -1401,7 +1470,7 @@ function mergeRemote(data){
     var loc = DB.videos[id], rts = +rv.updated_at || 0;
     if (loc && (loc.updated_at||0) > rts){ loc.dirty = true; return; }
     if (loc && (loc.updated_at||0) === rts && !!loc.deleted === !!rv.deleted) return;
-    DB.videos[id] = {title:rv.title||'', speaker:rv.speaker||'', note:rv.note||'', dur:+rv.dur || (loc && loc.dur) || 0, raw:rv.raw||'', cues:Array.isArray(rv.cues) ? rv.cues : [], deleted:!!rv.deleted, updated_at:rts, added:loc ? loc.added : (rts || Date.now()), dirty:false};
+    DB.videos[id] = {title:rv.title||'', speaker:rv.speaker||'', note:rv.note||'', dur:+rv.dur || (loc && loc.dur) || 0, raw:rv.raw||'', cues:Array.isArray(rv.cues) ? rv.cues : [], jaRaw:rv.ja_raw||'', ja:Array.isArray(rv.ja) ? rv.ja : [], deleted:!!rv.deleted, updated_at:rts, added:loc ? loc.added : (rts || Date.now()), dirty:false};
     changed = true; if (id === DB.videoId) curChanged = true;
   });
   var have = {}; DB.attempts.forEach(function(a){ if (a.cid) have[a.cid] = 1; });
@@ -1438,7 +1507,7 @@ function pushPending(){
   ids.forEach(function(id){
     chain = chain.then(function(){
       var v = DB.videos[id], stamp = v.updated_at || 0;
-      return rpc('shadow_upsert_video', {p_code:DB.sync.code, p_video:{video_id:id, title:v.title||'', speaker:v.speaker||'', note:v.note||'', dur:v.dur||null, raw:v.raw||'', cues:v.cues||[], deleted:!!v.deleted, updated_at:stamp}})
+      return rpc('shadow_upsert_video', {p_code:DB.sync.code, p_video:{video_id:id, title:v.title||'', speaker:v.speaker||'', note:v.note||'', dur:v.dur||null, raw:v.raw||'', cues:v.cues||[], ja_raw:v.jaRaw||'', ja:v.ja||[], deleted:!!v.deleted, updated_at:stamp}})
         .then(function(){ if (DB.videos[id] && (DB.videos[id].updated_at||0) === stamp) DB.videos[id].dirty = false; });
     });
   });
@@ -1474,12 +1543,13 @@ $('#dockPlay').addEventListener('click', togglePlay);
 $('#btnRec').addEventListener('click', startTake);
 $('#dockRec').addEventListener('click', startTake);
 $('#loopToggle').addEventListener('change', function(e){ DB.settings.loop = e.target.checked; save(); if (S.seg) S.seg.loop = DB.settings.loop; });
+$('#blurToggle').addEventListener('change', function(e){ DB.settings.blur = e.target.checked; S.reveal = false; save(); renderStage(); renderTranscript(); });
 $('#btnReveal').addEventListener('click', function(){ S.reveal = !S.reveal; renderStage(); renderTranscript(); });
 $('#btnMark').addEventListener('click', setLineStartHere);
 $('#btnSetup').addEventListener('click', openSetup);
 $('#btnSetup2').addEventListener('click', openSetup);
 $('#btnParse').addEventListener('click', parseAndLoad);
-$('#btnClearTx').addEventListener('click', function(){ $('#tx').value = ''; });
+$('#btnClearTx').addEventListener('click', function(){ $('#tx').value = ''; $('#txJa').value = ''; });
 $('#btnShift').addEventListener('click', function(){ var sec = parseFloat($('#shiftSec').value); if (!sec){ toast('ずらす秒数を入れてください（例: -8 で8秒早く）'); return; } if (shiftAllCues(sec)){ $('#shiftSec').value = '0'; closeDlg($('#setupDlg')); toast('スクリプト全体を ' + (sec>0?'+':'') + sec + ' 秒ずらしました'); } });
 $('#btnCloseSetup').addEventListener('click', function(){ closeDlg($('#setupDlg')); });
 $('#btnChangeVideo').addEventListener('click', openLibrary);
@@ -1514,7 +1584,7 @@ document.addEventListener('keydown', function(e){
   else if (e.key==='r' || e.key==='R'){ e.preventDefault(); startTake(); }
   else if (e.key==='l' || e.key==='L'){ DB.settings.loop = !DB.settings.loop; save(); $('#loopToggle').checked = DB.settings.loop; if (S.seg) S.seg.loop = DB.settings.loop; toast(DB.settings.loop ? 'ループ ON' : 'ループ OFF'); }
   else if (e.key==='b' || e.key==='B'){ var ks = SCRIPTS.map(function(s){ return s.k; }); DB.settings.script = ks[(ks.indexOf(DB.settings.script)+1)%ks.length]; S.reveal = false; save(); renderChips(); renderStage(); renderTranscript(); }
-  else if (e.key==='v' || e.key==='V'){ if (DB.settings.script!=='show'){ S.reveal = !S.reveal; renderStage(); renderTranscript(); } }
+  else if (e.key==='v' || e.key==='V'){ if (DB.settings.script!=='en' || DB.settings.blur){ S.reveal = !S.reveal; renderStage(); renderTranscript(); } }
 });
 window.addEventListener('resize', function(){ if (S.lastResult && S.lastResult.span && S.lastResult.span.rms) drawWave($('#wave'), S.lastResult.span); });
 
