@@ -120,6 +120,11 @@ h1,h2,h3{margin:0;text-wrap:balance}
 .bar i{display:block;height:100%;background:var(--accent)}
 .bar.you i{background:var(--rec)}
 canvas.wave{width:100%;height:56px;display:block;border-radius:8px;background:var(--surface-2)}
+.weak-lines{display:grid;gap:6px}
+.weak-lines .note{margin:0}
+.weak-lines .wl{display:flex;gap:6px;flex-wrap:wrap}
+.weak-lines .wl button{border:1px solid var(--line);background:var(--surface-2);border-radius:8px;padding:5px 9px;font-size:.82rem;text-align:left;max-width:100%}
+.weak-lines .wl button b{font-variant-numeric:tabular-nums;color:var(--bad);margin-right:6px}
 .advice{display:grid;gap:8px}
 .advice-item{padding:10px 12px;border-radius:10px;background:var(--surface-2);font-size:.9rem}
 .advice-item b{display:block;margin-bottom:2px}
@@ -246,13 +251,14 @@ a{color:var(--accent)}
         <div class="row"><span class="lbl">速度</span><div class="chips" id="speedChips"></div></div>
         <div class="row"><span class="lbl">単位</span><div class="chips" id="chunkChips"></div>
           <label class="toggle"><input type="checkbox" id="loopToggle"> ループ</label></div>
+        <div class="row"><span class="lbl">マイク</span><div class="chips" id="micChips"></div></div>
         <div class="buttons">
           <button id="btnPrev" class="btn">◀ 前</button>
           <button id="btnPlaySeg" class="btn primary">▶ お手本</button>
           <button id="btnNext" class="btn">次 ▶</button>
         </div>
         <button id="btnRec" class="rec"><span class="dot"></span><span id="btnRecLabel">録音して練習</span></button>
-        <p class="hint">イヤホン推奨。動画の音が録音に混ざるのを防げます。</p>
+        <p class="hint" id="micHint">イヤホン推奨。「素のまま」が一番きれいに録れます。スピーカーで聞くときだけ「エコー除去」に。</p>
       </div>
 
       <div class="card result" id="result" hidden>
@@ -263,6 +269,7 @@ a{color:var(--accent)}
         <div class="diff" id="diff"></div>
         <div class="legend"><span class="w near">近い</span><span class="w miss">言えていない</span><span class="w sub">別の語に</span></div>
         <div class="heard" id="heard"></div>
+        <div class="weak-lines" id="weakLines" hidden></div>
         <div class="pace" id="pace"></div>
         <canvas class="wave" id="wave" hidden></canvas>
         <div class="advice" id="advice"></div>
@@ -368,7 +375,8 @@ So I'd like to start by…
       <li><b>動画を選ぶ</b>：「ライブラリ」で YouTube の URL を追加（不要な動画は削除）。スクリプトは動画ごとに保存されます。</li>
       <li><b>スクリプトを貼る</b>：YouTube の「文字起こしを表示」からコピー。行をタップするとその場面に飛びます。</li>
       <li><b>お手本を聞く</b>：▶ お手本で今の行だけ再生。「ループ」でその行を繰り返し。速度は 0.5〜1.5 倍。</li>
-      <li><b>録音して練習</b>：「同時」はお手本と一緒に声を出す（シャドーイング）。「後追い」はお手本の後に自分だけで言う（リピーティング）。終わると自動で分析します。</li>
+      <li><b>録音して練習</b>：「同時」はお手本と一緒に声を出す（シャドーイング）。「後追い」はお手本の後に自分だけで言う（リピーティング）。単位を「全体」にするとトーク全体を一気に録音でき、終わると行ごとのスコアが出ます（途中で止めるときは録音ボタンをもう一度）。</li>
+      <li><b>マイク</b>：イヤホンなら「素のまま」。スピーカーで聞きながら話すときは「エコー除去」にすると動画の音が録音に入りにくくなりますが、自分の声も削られやすくなります。</li>
       <li><b>結果を見る</b>：赤＝言えていない語、黄＝近い語。ヒントに沿って同じ行をやり直し、70% を超えたら速度を上げる／スクリプトを「ぼかし」→「非表示」へ。</li>
     </ol>
     <p class="note">「ライブラリ」の同期コードを各端末で入れると、動画・スクリプト・記録が端末間で共有されます（Supabase に保存）。コードを入れない端末ではブラウザ内だけに保存されます。</p>
@@ -536,6 +544,22 @@ window.ShadowCore = (function(){
     a.issues = issues;
     return a;
   }
+  /* Same alignment, but the target is a list of lines; every word remembers its line and per-line scores come back. */
+  function analyzeLines(lineTexts, hypText){
+    var toks = [];
+    lineTexts.forEach(function(t, li){ tokenize(t).forEach(function(w){ w.line = li; toks.push(w); }); });
+    var a = align(toks, tokenize(hypText));
+    var issues = {}, per = [];
+    a.words.forEach(function(w, k){
+      w.line = toks[k].line;
+      var p = per[w.line] = per[w.line] || {i:w.line, ok:0, near:0, total:0};
+      p.total++; if (w.status==='ok') p.ok++; else if (w.status==='near') p.near++;
+      if (w.status==='ok') return; var c = classify(w.n); (issues[c] = issues[c] || []).push(w.raw || w.n);
+    });
+    a.issues = issues;
+    a.perLine = per.filter(Boolean).map(function(p){ p.score = p.total ? Math.round(100*(p.ok+0.5*p.near)/p.total) : 0; return p; });
+    return a;
+  }
 
   function speechSpan(samples, sr){
     var win = Math.max(1, Math.floor(sr*0.05)), n = Math.floor(samples.length/win);
@@ -556,7 +580,7 @@ window.ShadowCore = (function(){
     return m ? m[1] : null;
   }
 
-  return {parseTranscript:parseTranscript, buildLines:buildLines, tokenize:tokenize, align:align, analyze:analyze, classify:classify, ADVICE:ADVICE, speechSpan:speechSpan, fmt:fmt, parseYouTubeId:parseYouTubeId, tsToSec:tsToSec, splitSentences:splitSentences};
+  return {parseTranscript:parseTranscript, buildLines:buildLines, tokenize:tokenize, align:align, analyze:analyze, analyzeLines:analyzeLines, classify:classify, ADVICE:ADVICE, speechSpan:speechSpan, fmt:fmt, parseYouTubeId:parseYouTubeId, tsToSec:tsToSec, splitSentences:splitSentences};
 })();
 </script>
 
@@ -575,13 +599,14 @@ var PRESETS = [
   {id:'zAFcV7zuUDA', title:'How to tie your shoes', speaker:'Terry Moore', len:'約3分'}
 ];
 var SPEEDS = [0.5,0.75,1,1.25,1.5];
-var CHUNKS = [1,2,4];
+var CHUNKS = [{k:1, l:'1行'},{k:2, l:'2行'},{k:4, l:'4行'},{k:'all', l:'全体'}];
+var MICS = [{k:'raw', l:'素のまま（イヤホン）'},{k:'aec', l:'エコー除去（スピーカー）'}];
 var MODES = [{k:'shadow', l:'同時（シャドーイング）'},{k:'repeat', l:'後追い（リピート）'}];
 var SCRIPTS = [{k:'show', l:'表示'},{k:'blur', l:'ぼかし'},{k:'hide', l:'非表示'}];
 
 var KEY = 'shadowstage.v1';
 var PRESET_IDS = PRESETS.map(function(p){ return p.id; });
-var DB = {videoId:null, videos:{}, attempts:[], settings:{mode:'shadow', script:'show', speed:1, chunk:1, loop:false, split:true}, sync:{code:'', last:0}};
+var DB = {videoId:null, videos:{}, attempts:[], settings:{mode:'shadow', script:'show', speed:1, chunk:1, loop:false, split:true, mic:'raw'}, sync:{code:'', last:0}};
 function newCid(){ return 'a' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 function load(){
   try{ var j=localStorage.getItem(KEY); if(j){ var d=JSON.parse(j); if(d && typeof d==='object'){ DB.videoId=d.videoId||null; DB.videos=d.videos||{}; DB.attempts=d.attempts||[]; DB.settings=Object.assign(DB.settings, d.settings||{}); DB.sync=Object.assign(DB.sync, d.sync||{}); } } }catch(e){}
@@ -605,7 +630,7 @@ function markAllForPush(){
 function save(){ try{ localStorage.setItem(KEY, JSON.stringify(DB)); }catch(e){} }
 load();
 
-var S = {lines:[], idx:0, playing:false, seg:null, player:null, ready:false, duration:0, take:null, reveal:false, lastScroll:0, lastResult:null, tickTimer:null, playerState:-1, unlocked:false, unlockTimer:null, hintAt:0, syncBusy:false, syncState:'off', syncMsg:'', pushTimer:null, lastPullAt:0, armedDelete:null, armedTimer:null, libTag:'all', libQuery:''};
+var S = {lines:[], idx:0, playing:false, seg:null, player:null, ready:false, duration:0, take:null, reveal:false, lastScroll:0, lastResult:null, tickTimer:null, playerState:-1, unlocked:false, unlockTimer:null, hintAt:0, syncBusy:false, syncState:'off', syncMsg:'', pushTimer:null, lastPullAt:0, armedDelete:null, armedTimer:null, libTag:'all', libQuery:'', liveIdx:null};
 
 /* ---------- video ---------- */
 function currentVideo(){ var v = DB.videoId ? DB.videos[DB.videoId] : null; return (v && !v.deleted) ? v : null; }
@@ -616,7 +641,7 @@ function setVideo(id){
   DB.videoId = id; save();
   S.duration = DB.videos[id].dur || 0;
   rebuildLines();
-  S.idx = 0; S.reveal = false; S.lastResult = null; S.seg = null;
+  S.idx = 0; S.liveIdx = null; S.reveal = false; S.lastResult = null; S.seg = null;
   if (S.player && S.ready){ try{ S.player.cueVideoById(id); }catch(e){} $('#playerNote').hidden = true; }
   renderAll();
 }
@@ -643,7 +668,7 @@ function renameVideo(id){
 function pickAnyVideo(){
   var ids = visibleVideos();
   if (ids.length){ setVideo(ids[0]); return; }
-  DB.videoId = null; save(); S.lines = []; S.idx = 0; S.lastResult = null; S.seg = null;
+  DB.videoId = null; save(); S.lines = []; S.idx = 0; S.liveIdx = null; S.lastResult = null; S.seg = null;
   try{ if (S.ready) S.player.stopVideo(); }catch(e){}
   showPlayerNote('動画がありません。「ライブラリ」から YouTube の URL を追加してください。');
   renderAll();
@@ -702,24 +727,34 @@ function lineAt(t){
   return best;
 }
 function tick(){
+  if (S.take && S.take.phase==='record'){
+    var sec = Math.floor((performance.now()-S.take.recStart)/1000);
+    if (sec !== S.take.lastSec){ S.take.lastSec = sec; $('#btnRecLabel').textContent = '録音中 ' + C.fmt(sec) + '… タップで終了'; $('#dockRecLabel').textContent = '録音中 ' + C.fmt(sec); }
+  }
   if (!S.ready) return;
   var t = nowTime();
   if (S.seg && S.playing){
     if (t >= S.seg.end - 0.06){
       if (S.seg.loop){ S.player.seekTo(S.seg.start, true); }
       else { S.player.pauseVideo(); var cb = S.seg.onEnd; S.seg = null; if (cb) cb(); renderButtons(); }
+    } else {
+      var li = lineAt(t);
+      if (li>=0 && li!==S.liveIdx){ S.liveIdx = li; renderActive(true); }
     }
   } else if (S.playing && !S.take){
     var i = lineAt(t);
-    if (i>=0 && i!==S.idx){ S.idx = i; renderActive(true); }
+    if (i>=0 && i!==S.idx){ S.idx = i; S.liveIdx = i; renderActive(true); }
   }
 }
+function isAll(){ return DB.settings.chunk === 'all'; }
+function chunkN(){ return isAll() ? Math.max(1, S.lines.length) : (+DB.settings.chunk || 1); }
+function startIdx(){ return isAll() ? 0 : S.idx; }
 function rangeEnd(i, n){ return S.lines[Math.min(S.lines.length-1, i+n-1)]; }
 function playRange(i, n, opts){
   opts = opts || {};
   var a = S.lines[i]; if (!a || !S.ready) return;
   var b = rangeEnd(i, n);
-  S.idx = i;
+  S.idx = i; S.liveIdx = i;
   S.seg = {start:a.start, end:b.end, loop:!!opts.loop, onEnd:opts.onEnd||null};
   try{ S.player.seekTo(a.start, true); S.player.playVideo(); }catch(e){}
   setTimeout(applySpeed, 300);
@@ -733,13 +768,14 @@ function playRange(i, n, opts){
   renderButtons();
 }
 function pause(){ try{ S.player.pauseVideo(); }catch(e){} S.seg = null; renderButtons(); }
-function togglePlay(){ if (S.playing) pause(); else playRange(S.idx, DB.settings.chunk, {loop:DB.settings.loop}); }
+function togglePlay(){ if (S.playing) pause(); else playRange(startIdx(), chunkN(), {loop:DB.settings.loop}); }
 function move(delta){
   if (!S.lines.length) return;
   var wasPlaying = S.playing && S.seg;
-  S.idx = Math.max(0, Math.min(S.lines.length-1, S.idx + delta*DB.settings.chunk));
-  S.reveal = false;
-  if (wasPlaying) playRange(S.idx, DB.settings.chunk, {loop:DB.settings.loop});
+  if (isAll()){ DB.settings.chunk = 1; save(); renderChips(); S.idx = S.liveIdx != null ? S.liveIdx : S.idx; }
+  S.idx = Math.max(0, Math.min(S.lines.length-1, S.idx + delta*chunkN()));
+  S.reveal = false; S.liveIdx = S.idx;
+  if (wasPlaying) playRange(S.idx, chunkN(), {loop:DB.settings.loop});
   else { if (S.playerState===1 || S.playerState===2){ try{ S.player.seekTo(S.lines[S.idx].start, true); if (S.playerState===2) S.player.pauseVideo(); }catch(e){} } renderActive(true); }
 }
 
@@ -758,11 +794,14 @@ function startTake(){
   }
   if (!S.lines.length){ openSetup(); return; }
   if (!S.ready){ toast('動画の準備ができていません'); return; }
-  var i = S.idx, n = DB.settings.chunk, a = S.lines[i], b = rangeEnd(i, n);
-  var take = {i:i, n:n, start:a.start, end:b.end, target:S.lines.slice(i, i+n).map(function(l){ return l.text; }).join(' '), rate:DB.settings.speed, mode:DB.settings.mode,
+  var i = startIdx(), n = chunkN(), a = S.lines[i], b = rangeEnd(i, n);
+  var lineTexts = S.lines.slice(i, i+n).map(function(l){ return l.text; });
+  var take = {i:i, n:lineTexts.length, start:a.start, end:b.end, lineTexts:lineTexts, target:lineTexts.join(' '), rate:DB.settings.speed, mode:DB.settings.mode,
     finals:[], interim:'', chunks:[], stream:null, rec:null, recog:null, phase:'init', recStart:0, recStop:0, blob:null, timer:null, restarts:0, recDone:false, recogEnded:false, analyzed:false, stopping:false, recogError:null};
   S.take = take; renderRecState();
-  var micP = (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) ? navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true, noiseSuppression:true}}) : Promise.reject(new Error('unsupported'));
+  var aec = DB.settings.mic === 'aec';
+  var cons = {audio:{echoCancellation:aec, noiseSuppression:aec, autoGainControl:true, channelCount:1}};
+  var micP = (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) ? navigator.mediaDevices.getUserMedia(cons) : Promise.reject(new Error('unsupported'));
   micP.then(function(stream){ take.stream = stream; }, function(){ take.stream = null; toast('マイクが使えないため、音声認識のみで進めます'); }).then(function(){
     if (S.take !== take) { stopStream(take); return; }
     if (take.mode==='shadow'){
@@ -793,7 +832,8 @@ function beginRecording(take){
   if (take.stream && window.MediaRecorder){
     try{
       var mime = pickMime();
-      take.rec = mime ? new MediaRecorder(take.stream, {mimeType:mime}) : new MediaRecorder(take.stream);
+      var ropt = {audioBitsPerSecond:96000}; if (mime) ropt.mimeType = mime;
+      try{ take.rec = new MediaRecorder(take.stream, ropt); }catch(e2){ take.rec = mime ? new MediaRecorder(take.stream, {mimeType:mime}) : new MediaRecorder(take.stream); }
       take.rec.ondataavailable = function(e){ if (e.data && e.data.size) take.chunks.push(e.data); };
       take.rec.start();
     }catch(e){ take.rec = null; }
@@ -809,7 +849,7 @@ function beginRecording(take){
     };
     r.onerror = function(ev){ take.recogError = ev.error; if (ev.error==='not-allowed' || ev.error==='service-not-allowed' || ev.error==='audio-capture') take.recogDead = true; };
     r.onend = function(){
-      if (take.phase==='record' && !take.stopping && !take.recogDead && take.restarts<8){ take.restarts++; try{ r.start(); }catch(e){} }
+      if (take.phase==='record' && !take.stopping && !take.recogDead && take.restarts<300){ take.restarts++; try{ r.start(); }catch(e){} }
       else { take.recogEnded = true; maybeAnalyze(take); }
     };
     try{ r.start(); take.recog = r; }catch(e){ take.recog = null; take.recogError = String(e); }
@@ -853,12 +893,13 @@ function measureSpeech(blob){
 }
 function runAnalysis(take){
   var hyp = (take.finals.join(' ') + ' ' + take.interim).replace(/\s+/g,' ').trim();
-  var a = C.analyze(take.target, hyp);
+  var a = C.analyzeLines(take.lineTexts, hyp);
   measureSpeech(take.blob).then(function(span){
     var result = {take:take, hyp:hyp, a:a, span:span, modelDur:(take.end-take.start)/take.rate, url: take.blob ? URL.createObjectURL(take.blob) : null, ts:Date.now()};
     if (S.lastResult && S.lastResult.url){ try{ URL.revokeObjectURL(S.lastResult.url); }catch(e){} }
     S.lastResult = result;
-    DB.attempts.push({v:DB.videoId, i:take.i, n:take.n, score:a.score, missed:a.words.filter(function(w){ return w.status!=='ok'; }).map(function(w){ return w.n; }).slice(0,12), ts:result.ts, rate:take.rate, mode:take.mode, heard:hyp.slice(0,500), cid:newCid(), synced:false});
+    var perLines = take.n > 1 ? a.perLine.map(function(p){ return [take.i + p.i, p.score]; }) : [];
+    DB.attempts.push({v:DB.videoId, i:take.i, n:take.n, score:a.score, missed:a.words.filter(function(w){ return w.status!=='ok'; }).map(function(w){ return w.n; }).slice(0,20), ts:result.ts, rate:take.rate, mode:take.mode, heard:hyp.slice(0, take.n > 4 ? 4000 : 500), lines:perLines, cid:newCid(), synced:false});
     if (DB.attempts.length>1000) DB.attempts.splice(0, DB.attempts.length-1000);
     save(); schedulePush();
     renderResult(result); renderTranscript(); renderProgress(); renderRecState(); renderStage();
@@ -889,16 +930,18 @@ function renderChips(){
   chipGroup($('#modeChips'), MODES, DB.settings.mode, function(k){ DB.settings.mode = k; save(); renderChips(); renderRecState(); });
   chipGroup($('#scriptChips'), SCRIPTS, DB.settings.script, function(k){ DB.settings.script = k; S.reveal = false; save(); renderChips(); renderStage(); renderTranscript(); });
   chipGroup($('#speedChips'), SPEEDS.map(function(s){ return {k:s, l:s.toFixed(2).replace(/0$/,'') + 'x'}; }), DB.settings.speed, function(k){ DB.settings.speed = k; save(); applySpeed(); renderChips(); });
-  chipGroup($('#chunkChips'), CHUNKS.map(function(c){ return {k:c, l:c + '行'}; }), DB.settings.chunk, function(k){ DB.settings.chunk = k; save(); renderChips(); renderActive(false); });
+  chipGroup($('#chunkChips'), CHUNKS, DB.settings.chunk, function(k){ DB.settings.chunk = k; save(); renderChips(); renderActive(false); renderResult(S.lastResult); });
+  chipGroup($('#micChips'), MICS, DB.settings.mic || 'raw', function(k){ DB.settings.mic = k; save(); renderChips(); });
   $('#loopToggle').checked = !!DB.settings.loop;
 }
-function rangeLabel(){ var a = S.lines[S.idx]; if (!a) return '0:00 – 0:00'; var b = rangeEnd(S.idx, DB.settings.chunk); return C.fmt(a.start) + ' – ' + C.fmt(b.end); }
-function rangeText(){ return S.lines.slice(S.idx, S.idx + DB.settings.chunk).map(function(l){ return l.text; }).join(' '); }
+function rangeLabel(){ var a = S.lines[startIdx()]; if (!a) return '0:00 – 0:00'; var b = rangeEnd(startIdx(), chunkN()); return C.fmt(a.start) + ' – ' + C.fmt(b.end); }
+function rangeText(){ if (isAll()){ var li = S.liveIdx != null ? S.liveIdx : S.idx; return (S.lines[li] || S.lines[0] || {}).text || ''; } return S.lines.slice(S.idx, S.idx + chunkN()).map(function(l){ return l.text; }).join(' '); }
 function renderStage(){
   var st = $('#stageText'), pos = $('#stagePos'), rv = $('#btnReveal');
   st.classList.remove('blur','masked');
   if (!S.lines.length){ pos.textContent = '— / —'; st.textContent = 'スクリプトを貼り付けると、ここに今の行が大きく表示されます。'; rv.hidden = true; $('#stageTime').textContent = '0:00 – 0:00'; return; }
-  pos.textContent = (S.idx+1) + ' / ' + S.lines.length + (DB.settings.chunk>1 ? ' （' + DB.settings.chunk + '行）' : '');
+  var li = S.liveIdx != null ? S.liveIdx : S.idx;
+  pos.textContent = isAll() ? ('全体 ' + (li+1) + ' / ' + S.lines.length) : ((S.idx+1) + ' / ' + S.lines.length + (chunkN()>1 ? ' （' + chunkN() + '行）' : ''));
   $('#stageTime').textContent = rangeLabel();
   var mode = DB.settings.script;
   if (mode==='hide' && !S.reveal){ var wc = rangeText().split(/\s+/).length; st.textContent = '（非表示 ・ ' + wc + ' 語）'; st.classList.add('masked'); rv.hidden = false; rv.textContent = '見る'; }
@@ -909,6 +952,7 @@ function renderLive(take){
   if (!take || take.phase!=='record'){ live.hidden = true; live.innerHTML = ''; return; }
   live.hidden = false; live.innerHTML = '';
   var f = take.finals.join(' ').trim();
+  if (f.length > 220) f = '…' + f.slice(-220);
   live.appendChild(el('b', null, f ? f + ' ' : ''));
   live.appendChild(document.createTextNode(take.interim || (f ? '' : (take.recogError==='unsupported' ? 'この端末の音声認識は使えません（録音のみ）' : '聞いています…'))));
 }
@@ -929,22 +973,27 @@ function renderTranscript(){
     var s = best[i];
     var sc = el('span', 'sc' + (s==null ? '' : s>=90 ? ' good' : s>=70 ? ' mid' : ' low'), s==null ? '·' : s + '%');
     b.appendChild(tc); b.appendChild(tx); b.appendChild(sc);
-    b.addEventListener('click', function(){ if (S.take) return; S.reveal = false; playRange(i, DB.settings.chunk, {loop:DB.settings.loop}); });
+    b.addEventListener('click', function(){ if (S.take) return; S.reveal = false; if (isAll()) playRange(i, S.lines.length - i, {loop:DB.settings.loop}); else playRange(i, chunkN(), {loop:DB.settings.loop}); });
     frag.appendChild(b);
   });
   host.appendChild(frag);
   renderActive(false);
 }
-function inRange(i){ return i>=S.idx && i<S.idx+DB.settings.chunk; }
+function inRange(i){ return isAll() ? false : (i>=S.idx && i<S.idx+chunkN()); }
 function renderActive(scroll){
   var items = $$('#transcript .line');
-  items.forEach(function(b, i){ b.classList.toggle('active', i===S.idx); b.classList.toggle('in-range', inRange(i)); });
+  var act = S.liveIdx != null ? S.liveIdx : S.idx;
+  items.forEach(function(b, i){ b.classList.toggle('active', i===act); b.classList.toggle('in-range', inRange(i)); });
   renderStage();
-  if (scroll && items[S.idx] && performance.now()-S.lastScroll>2500){ try{ items[S.idx].scrollIntoView({block:'center', behavior:'smooth'}); }catch(e){} }
+  if (scroll && items[act] && performance.now()-S.lastScroll>2500){ try{ items[act].scrollIntoView({block:'center', behavior:'smooth'}); }catch(e){} }
 }
 function bestScores(){
   var best = {};
-  DB.attempts.forEach(function(a){ if (a.v!==DB.videoId) return; for (var k=a.i; k<a.i+(a.n||1); k++){ if (best[k]==null || a.score>best[k]) best[k] = a.score; } });
+  DB.attempts.forEach(function(a){
+    if (a.v!==DB.videoId) return;
+    if (a.lines && a.lines.length){ a.lines.forEach(function(p){ var k = p[0], sc = p[1]; if (best[k]==null || sc>best[k]) best[k] = sc; }); return; }
+    for (var k=a.i; k<a.i+(a.n||1); k++){ if (best[k]==null || a.score>best[k]) best[k] = a.score; }
+  });
   return best;
 }
 function renderButtons(){
@@ -978,10 +1027,28 @@ function renderResult(r){
   var a = r.a, lab = scoreLabel(a.score, r.hyp);
   $('#scoreNum').textContent = r.hyp ? a.score : '—';
   $('#scoreLabel').textContent = lab[0];
-  $('#scoreSub').textContent = lab[1] + '　（' + (r.take.i+1) + (r.take.n>1 ? '–' + Math.min(S.lines.length, r.take.i+r.take.n) : '') + '行 / ' + r.take.rate + 'x / ' + (r.take.mode==='shadow' ? '同時' : '後追い') + '）';
+  $('#scoreSub').textContent = lab[1] + '　（' + (r.take.n >= S.lines.length && r.take.i === 0 ? '全体 ' + r.take.n + '行' : (r.take.i+1) + (r.take.n>1 ? '–' + Math.min(S.lines.length, r.take.i+r.take.n) : '') + '行') + ' / ' + r.take.rate + 'x / ' + (r.take.mode==='shadow' ? '同時' : '後追い') + '）';
+  var wl = $('#weakLines'); wl.innerHTML = '';
+  var weak = (a.perLine || []).filter(function(p){ return p.total >= 3 && p.score < 70; }).sort(function(x,y){ return x.score-y.score; }).slice(0, 6);
+  if (r.take.n > 1 && r.hyp && weak.length){
+    wl.hidden = false;
+    wl.appendChild(el('p', 'note', '落ちた行（タップでその行だけ練習）'));
+    var row = el('div', 'wl');
+    weak.forEach(function(p){
+      var li = r.take.i + p.i, txt = (S.lines[li] || {}).text || '';
+      var bt = el('button'); bt.type = 'button'; bt.appendChild(el('b', null, p.score + '%')); bt.appendChild(document.createTextNode((li+1) + '行: ' + (txt.length > 48 ? txt.slice(0, 48) + '…' : txt)));
+      bt.addEventListener('click', function(){ DB.settings.chunk = 1; save(); renderChips(); S.idx = li; S.liveIdx = li; S.reveal = false; playRange(li, 1, {loop:DB.settings.loop}); });
+      row.appendChild(bt);
+    });
+    wl.appendChild(row);
+  } else wl.hidden = true;
+  $('#btnNextLine').hidden = (r.take.i + r.take.n >= S.lines.length);
   var diff = $('#diff'); diff.innerHTML = '';
+  var lastLine = null;
   a.words.forEach(function(w, k){
-    if (k>0) diff.appendChild(document.createTextNode(w.glue ? w.glue : ' '));
+    if (w.line != null && lastLine != null && w.line !== lastLine && r.take.n > 1) diff.appendChild(el('br'));
+    else if (k>0) diff.appendChild(document.createTextNode(w.glue ? w.glue : ' '));
+    if (w.line != null) lastLine = w.line;
     if (!w.raw) return;
     var sp = el('span', 'w ' + w.status, w.raw);
     if (w.status==='sub' || w.status==='near') sp.title = '聞こえた語: ' + w.heard;
@@ -1039,6 +1106,7 @@ function buildAdvice(r){
   }
   var cats = Object.keys(a.issues).map(function(k){ return [k, a.issues[k]]; }).sort(function(x,y){ return y[1].length-x[1].length; }).slice(0,2);
   cats.forEach(function(c){ var ad = C.ADVICE[c[0]]; var uniq = []; c[1].forEach(function(w){ if (uniq.indexOf(w)<0) uniq.push(w); }); items.push({label:ad.label, tip:ad.tip, words:uniq.slice(0,8)}); });
+  if (r.take.n > 4 && r.hyp) items.push({label:'全体の見方', tip:'上の「落ちた行」から弱い行だけ1行単位でやり直し、70%を超えたらまた全体を通す。スクリプト一覧の行ごとの％が更新されています。'});
   if (a.score>=90) items.push({label:'次の負荷', tip: r.take.rate<1.25 ? '速度を一段上げるか、スクリプトを「ぼかし」にして同じ行を。' : 'スクリプト「非表示」で、単位を 4 行にして通し練習へ。'});
   else if (a.score<60 && r.take.rate>0.75) items.push({label:'速度を落とす', tip:'0.75倍にして同じ行を3回。70% を超えたら 1.0倍に戻す。'});
   if (r.span && r.span.span>0 && r.modelDur){ var ratio = r.span.span/r.modelDur; if (ratio>1.3) items.push({label:'テンポ', tip:'単語ごとに区切らず、意味のかたまり（3〜5語）で一息に。お手本の息継ぎの位置をまねる。'}); }
@@ -1070,7 +1138,7 @@ function parseAndLoad(){
   if (!cues.length){ toast('時間付きの行が見つかりません。0:03 のような時間とテキストが並んだ形で貼ってください'); return; }
   var v = currentVideo(); if (!v){ toast('先に動画を選んでください'); return; }
   v.raw = raw; v.cues = cues; touch(v); DB.settings.split = $('#splitLong').checked; save(); schedulePush();
-  rebuildLines(); S.idx = 0; S.reveal = false;
+  rebuildLines(); S.idx = 0; S.liveIdx = null; S.reveal = false;
   closeDlg($('#setupDlg'));
   renderAll();
   toast(S.lines.length + ' 行を読み込みました（この動画に保存' + (DB.sync.code ? '・同期' : '') + '）');
@@ -1176,7 +1244,7 @@ function mergeRemote(data){
   var have = {}; DB.attempts.forEach(function(a){ if (a.cid) have[a.cid] = 1; });
   (data.attempts||[]).forEach(function(ra){
     if (!ra.cid || have[ra.cid]) return; have[ra.cid] = 1;
-    DB.attempts.push({v:ra.v, i:+ra.i||0, n:+ra.n||1, score:+ra.score||0, missed:Array.isArray(ra.missed) ? ra.missed : [], ts:+ra.ts||Date.now(), rate:+ra.rate||1, mode:ra.mode||'shadow', heard:ra.heard||'', cid:ra.cid, synced:true});
+    DB.attempts.push({v:ra.v, i:+ra.i||0, n:+ra.n||1, score:+ra.score||0, missed:Array.isArray(ra.missed) ? ra.missed : [], ts:+ra.ts||Date.now(), rate:+ra.rate||1, mode:ra.mode||'shadow', heard:ra.heard||'', lines:Array.isArray(ra.lines) ? ra.lines : [], cid:ra.cid, synced:true});
     changed = true;
   });
   if (changed){ DB.attempts.sort(function(a,b){ return a.ts-b.ts; }); if (DB.attempts.length>1000) DB.attempts.splice(0, DB.attempts.length-1000); }
@@ -1191,7 +1259,7 @@ function syncPull(){
     DB.sync.last = +(data && data.server_time) || Date.now(); S.lastPullAt = Date.now(); save();
     var cur = currentVideo();
     if (!cur){ var ids = visibleVideos(); if (ids.length) { DB.videoId = ids[0]; m.curChanged = true; } }
-    if (m.curChanged){ var v = currentVideo(); S.duration = (v && v.dur) || S.duration; rebuildLines(); S.idx = Math.min(S.idx, Math.max(0, S.lines.length-1)); S.lastResult = null; if (S.ready && v){ try{ var vd = S.player.getVideoData(); if (!vd || vd.video_id !== DB.videoId) S.player.cueVideoById(DB.videoId); }catch(e){} $('#playerNote').hidden = true; } }
+    if (m.curChanged){ var v = currentVideo(); S.duration = (v && v.dur) || S.duration; rebuildLines(); S.idx = Math.min(S.idx, Math.max(0, S.lines.length-1)); S.liveIdx = null; S.lastResult = null; if (S.ready && v){ try{ var vd = S.player.getVideoData(); if (!vd || vd.video_id !== DB.videoId) S.player.cueVideoById(DB.videoId); }catch(e){} $('#playerNote').hidden = true; } }
     if (m.changed || m.curChanged){ renderAll(); if ($('#videoDlg').open) renderLibrary(); }
     S.syncBusy = false; setSync('ok');
     return pushPending().then(function(){ return true; });
@@ -1214,7 +1282,7 @@ function pushPending(){
   if (pend.length){
     chain = chain.then(function(){
       var batch = pend.slice(-200);
-      return rpc('shadow_add_attempts', {p_code:DB.sync.code, p_attempts:batch.map(function(a){ return {cid:a.cid, v:a.v, i:a.i, n:a.n, score:a.score, missed:a.missed||[], rate:a.rate, mode:a.mode, ts:a.ts, heard:a.heard||''}; })})
+      return rpc('shadow_add_attempts', {p_code:DB.sync.code, p_attempts:batch.map(function(a){ return {cid:a.cid, v:a.v, i:a.i, n:a.n, score:a.score, missed:a.missed||[], rate:a.rate, mode:a.mode, ts:a.ts, heard:a.heard||'', lines:a.lines||[]}; })})
         .then(function(){ batch.forEach(function(a){ a.synced = true; }); });
     });
   }
@@ -1269,8 +1337,8 @@ $('#btnHelp').addEventListener('click', function(){ openDlg($('#helpDlg')); });
 $('#btnCloseHelp').addEventListener('click', function(){ closeDlg($('#helpDlg')); });
 $('#btnModel').addEventListener('click', function(){ var r = S.lastResult; if (r) playRange(r.take.i, r.take.n, {}); });
 $('#btnMine').addEventListener('click', function(){ var a = $('#mine'); if (!a.src) return; if (S.playing) pause(); try{ a.currentTime = 0; a.play(); }catch(e){} });
-$('#btnRetry').addEventListener('click', function(){ var r = S.lastResult; if (r){ S.idx = r.take.i; renderActive(false); } startTake(); });
-$('#btnNextLine').addEventListener('click', function(){ var r = S.lastResult; if (r){ S.idx = Math.min(S.lines.length-1, r.take.i + r.take.n); S.reveal = false; renderActive(true); } });
+$('#btnRetry').addEventListener('click', function(){ var r = S.lastResult; if (r && !isAll()){ S.idx = r.take.i; S.liveIdx = r.take.i; renderActive(false); } startTake(); });
+$('#btnNextLine').addEventListener('click', function(){ var r = S.lastResult; if (r){ if (isAll()){ DB.settings.chunk = 1; save(); renderChips(); } S.idx = Math.min(S.lines.length-1, r.take.i + r.take.n); S.liveIdx = S.idx; S.reveal = false; renderActive(true); } });
 ['wheel','touchmove'].forEach(function(evn){ window.addEventListener(evn, function(){ S.lastScroll = performance.now(); }, {passive:true}); });
 document.addEventListener('keydown', function(e){
   var tag = (e.target && e.target.tagName) || '';
