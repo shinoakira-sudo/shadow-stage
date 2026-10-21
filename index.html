@@ -200,6 +200,7 @@ a{color:var(--accent)}
 .lib-tools input{width:100%;border:1px solid var(--line);border-radius:10px;padding:9px 10px;background:var(--surface-2);color:var(--fg);font:inherit}
 .lib-count{font-size:.78rem;color:var(--muted)}
 .tag{font-size:.7rem;border:1px solid var(--line);border-radius:999px;padding:1px 7px;color:var(--muted);white-space:nowrap}
+.tag.shared{border-color:var(--accent);color:var(--accent)}
 .lib-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
 .lib-item.current{border-color:var(--accent);background:var(--accent-soft)}
 .lib-item b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -356,6 +357,7 @@ So I'd like to start by…
     <label class="toggle" style="margin-left:0"><input type="checkbox" id="splitLong" checked> 長い段落は文ごとに分ける（時間は推定）</label>
     <div class="shift-row"><span class="note">全体の時間をずらす</span><input type="number" id="shiftSec" step="0.5" value="0" inputmode="decimal"> 秒 <button id="btnShift" class="ghost small" type="button">適用</button></div>
     <p class="note">「読み込む」を押すと、自動補正や「開始をここに」で直した時間は貼り付けた内容に戻ります。</p>
+    <p class="note" id="setupNote" hidden>この動画は共有ライブラリのものです。読み込むと、あなた専用のコピーとして保存されます（共有版は変わりません）。</p>
     <div class="dlg-actions">
       <button id="btnClearTx" class="ghost">クリア</button>
       <button id="btnCloseSetup" class="ghost">閉じる</button>
@@ -373,6 +375,7 @@ So I'd like to start by…
       <div class="lib-count" id="libCount"></div>
     </div>
     <div class="lib" id="libList"></div>
+    <p class="note" id="sharedNote">「共有」は、このアプリの作成者がスクリプトを付けた動画です。誰でも練習に使えます。編集すると自分専用のコピーになります。練習記録は共有されません。</p>
     <label for="urlInput" class="note">追加：YouTube の URL / 動画ID（タイトルは自動取得）</label>
     <div class="add-row"><input type="text" id="urlInput" placeholder="https://www.youtube.com/watch?v=…" autocomplete="off"><button id="btnUseUrl" class="btn primary">追加</button></div>
     <div class="sync-box">
@@ -391,7 +394,7 @@ So I'd like to start by…
   <div class="dlg-body">
     <h2>使い方</h2>
     <ol class="steps">
-      <li><b>動画を選ぶ</b>：「ライブラリ」で YouTube の URL を追加（不要な動画は削除）。スクリプトは動画ごとに保存されます。</li>
+      <li><b>動画を選ぶ</b>：「ライブラリ」には、作成者がスクリプトを付けた動画が「共有」として最初から入っています。自分で YouTube の URL を追加することもできます。スクリプトは動画ごとに保存されます。</li>
       <li><b>スクリプトを貼る</b>：YouTube の「文字起こしを表示」からコピー。行をタップするとその場面に飛びます。</li>
       <li><b>お手本を聞く</b>：▶ お手本で今の行だけ再生。「ループ」でその行を繰り返し。速度は 0.5〜1.5 倍。</li>
       <li><b>録音して練習</b>：「同時」はお手本と一緒に声を出す（シャドーイング）。「後追い」はお手本の後に自分だけで言う（リピーティング）。単位を「全体」にするとトーク全体を一気に録音でき、終わると行ごとのスコアが出ます（途中で止めるときは録音ボタンをもう一度）。録音はお手本の音声が実際に始まった瞬間から開始されるので、YouTube の広告は録音に入りません。</li>
@@ -697,10 +700,10 @@ var SCRIPTS = [{k:'en', l:'英語'},{k:'ja', l:'日本語'},{k:'both', l:'英日
 
 var KEY = 'shadowstage.v1';
 var PRESET_IDS = PRESETS.map(function(p){ return p.id; });
-var DB = {videoId:null, videos:{}, attempts:[], settings:{mode:'shadow', script:'en', speed:1, chunk:1, loop:false, split:true, mic:'raw', blur:false}, sync:{code:'', last:0}};
+var DB = {videoId:null, videos:{}, attempts:[], settings:{mode:'shadow', script:'en', speed:1, chunk:1, loop:false, split:true, mic:'raw', blur:false}, sync:{code:'', last:0, isPublic:false}, shared:{}, sharedAt:0, hidden:{}};
 function newCid(){ return 'a' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 function load(){
-  try{ var j=localStorage.getItem(KEY); if(j){ var d=JSON.parse(j); if(d && typeof d==='object'){ DB.videoId=d.videoId||null; DB.videos=d.videos||{}; DB.attempts=d.attempts||[]; DB.settings=Object.assign(DB.settings, d.settings||{}); DB.sync=Object.assign(DB.sync, d.sync||{}); } } }catch(e){}
+  try{ var j=localStorage.getItem(KEY); if(j){ var d=JSON.parse(j); if(d && typeof d==='object'){ DB.videoId=d.videoId||null; DB.videos=d.videos||{}; DB.attempts=d.attempts||[]; DB.settings=Object.assign(DB.settings, d.settings||{}); DB.sync=Object.assign(DB.sync, d.sync||{}); DB.shared=(d.shared&&typeof d.shared==='object')?d.shared:{}; DB.sharedAt=+d.sharedAt||0; DB.hidden=(d.hidden&&typeof d.hidden==='object')?d.hidden:{}; } } }catch(e){}
   var now = Date.now(), k = 0;
   if (DB.settings.script === 'show') DB.settings.script = 'en';
   else if (DB.settings.script === 'blur'){ DB.settings.script = 'en'; DB.settings.blur = true; }
@@ -729,13 +732,36 @@ load();
 var S = {lines:[], idx:0, playing:false, seg:null, player:null, ready:false, duration:0, take:null, reveal:false, lastScroll:0, lastResult:null, tickTimer:null, playerState:-1, unlocked:false, unlockTimer:null, hintAt:0, syncBusy:false, syncState:'off', syncMsg:'', pushTimer:null, lastPullAt:0, armedDelete:null, armedTimer:null, libTag:'all', libQuery:'', liveIdx:null};
 
 /* ---------- video ---------- */
-function currentVideo(){ var v = DB.videoId ? DB.videos[DB.videoId] : null; return (v && !v.deleted) ? v : null; }
-function visibleVideos(){ return Object.keys(DB.videos).filter(function(id){ return !DB.videos[id].deleted; }).sort(function(a,b){ return (DB.videos[a].added||0)-(DB.videos[b].added||0); }); }
+/* A video is either the user's own entry (DB.videos) or a read-only entry from the shared catalog (DB.shared).
+   An own entry always wins; an own tombstone or a local "hidden" mark hides the shared one. */
+function entryOf(id){
+  if (!id) return null;
+  var own = DB.videos[id];
+  if (own) return own.deleted ? null : own;
+  var sh = DB.shared[id];
+  return (sh && !DB.hidden[id]) ? sh : null;
+}
+function isShared(id){ return !!(entryOf(id) && entryOf(id).shared); }
+function currentVideo(){ return entryOf(DB.videoId); }
+function visibleVideos(){
+  var own = Object.keys(DB.videos).filter(function(id){ return !DB.videos[id].deleted; }).sort(function(a,b){ return (DB.videos[a].added||0)-(DB.videos[b].added||0); });
+  var sh = Object.keys(DB.shared).filter(function(id){ return !DB.videos[id] && !DB.hidden[id]; }).sort(function(a,b){ return (DB.shared[a].order||0)-(DB.shared[b].order||0); });
+  return own.concat(sh);
+}
+/* Before changing a shared video (script, title, timing), turn it into the user's own copy. */
+function ensureOwn(id){
+  var e = entryOf(id); if (!e) return null;
+  if (!e.shared) return e;
+  DB.videos[id] = {title:e.title||'', speaker:e.speaker||'', note:e.note||'', dur:e.dur||0, raw:e.raw||'', cues:(e.cues||[]).map(function(c){ return {start:c.start, text:c.text, fix:!!c.fix}; }), jaRaw:e.jaRaw||'', ja:(e.ja||[]).slice(), deleted:false, updated_at:0, added:Date.now(), dirty:true};
+  touch(DB.videos[id]);
+  return DB.videos[id];
+}
+function cuesToRaw(cues){ return (cues||[]).map(function(c){ return C.fmt(c.start) + '\n' + c.text; }).join('\n'); }
 function touch(v){ v.updated_at = Math.max(Date.now(), (v.updated_at||0)+1); v.dirty = true; }
 function setVideo(id){
-  if (!id || !DB.videos[id] || DB.videos[id].deleted) return;
+  if (!id || !entryOf(id)) return;
   DB.videoId = id; save();
-  S.duration = DB.videos[id].dur || 0;
+  S.duration = (entryOf(id) || {}).dur || 0;
   rebuildLines();
   S.idx = 0; S.liveIdx = null; S.reveal = false; S.lastResult = null; S.seg = null;
   if (S.player && S.ready){ try{ S.player.cueVideoById(id); }catch(e){} $('#playerNote').hidden = true; }
@@ -744,21 +770,24 @@ function setVideo(id){
 function addVideo(id){
   var v = DB.videos[id];
   if (v && !v.deleted){ setVideo(id); return 'exists'; }
+  if (!v && DB.shared[id]){ delete DB.hidden[id]; save(); setVideo(id); return 'exists'; }
   DB.videos[id] = {title:(v && v.title) || '', speaker:'', note:'', dur:(v && v.dur) || 0, raw:(v && v.raw) || '', cues:(v && v.cues) || [], jaRaw:(v && v.jaRaw) || '', ja:(v && v.ja) || [], deleted:false, updated_at:0, added:Date.now(), dirty:true};
   touch(DB.videos[id]);
   setVideo(id); schedulePush();
   return 'added';
 }
 function deleteVideo(id){
-  var v = DB.videos[id]; if (!v) return;
-  v.deleted = true; touch(v); save(); schedulePush();
+  var v = DB.videos[id];
+  if (!v){ if (DB.shared[id]){ DB.hidden[id] = true; save(); } }
+  else { v.deleted = true; touch(v); save(); schedulePush(); }
   if (DB.videoId === id) pickAnyVideo();
   renderAll(); renderLibrary();
 }
 function renameVideo(id){
-  var v = DB.videos[id]; if (!v) return;
-  var t = window.prompt('表示名', v.title || '');
+  var e = entryOf(id); if (!e) return;
+  var t = window.prompt('表示名', e.title || '');
   if (t === null) return;
+  var v = ensureOwn(id); if (!v) return;
   v.title = t.trim(); touch(v); save(); schedulePush(); renderVideoMeta(); renderLibrary();
 }
 function pickAnyVideo(){
@@ -784,7 +813,7 @@ function loadYT(){
 }
 function showPlayerNote(msg){ var n=$('#playerNote'); n.textContent = msg; n.hidden = false; }
 function captureMeta(){
-  var v = currentVideo(); if (!v) return;
+  var v = currentVideo(); if (!v || v.shared) return;
   var changed = false;
   try{ var vd = S.player.getVideoData(); if (vd && vd.video_id === DB.videoId && vd.title && !v.title){ v.title = vd.title; touch(v); changed = true; } }catch(e){}
   try{ var d = S.player.getDuration(); if (d && d>0){ S.duration = d; if (!v.dur){ v.dur = Math.round(d); changed = true; } } }catch(e){}
@@ -1059,7 +1088,7 @@ function runAnalysis(take){
 
 /* ---------- transcript timing fixes ---------- */
 function materializeCues(mutate){
-  var v = currentVideo(); if (!v || !S.lines.length) return false;
+  var v = ensureOwn(DB.videoId); if (!v || !S.lines.length) return false;
   var cues = S.lines.map(function(l){ return {start:l.start, text:l.text, fix:!!l.fix}; });
   if (mutate(cues) === false) return false;
   cues.forEach(function(c, k){ if (k>0 && c.start < cues[k-1].start + 0.2) c.start = cues[k-1].start + 0.2; if (c.start < 0) c.start = 0; });
@@ -1094,7 +1123,7 @@ function renderVideoMeta(){
   var st = $('#scriptStatus');
   if (!v){ st.textContent = ''; st.className = 'script-status'; return; }
   var n = v.cues.length ? S.lines.length : 0;
-  st.textContent = n ? 'スクリプト ' + n + ' 行（保存済み）' : 'スクリプト未登録';
+  st.textContent = n ? 'スクリプト ' + n + ' 行（' + (v.shared ? '共有' : '保存済み') + (v.ja && v.ja.length ? '・日本語あり' : '') + ')' : 'スクリプト未登録';
   st.className = 'script-status' + (n ? ' ok' : '');
 }
 function chipGroup(host, items, current, onPick){
@@ -1354,12 +1383,12 @@ function renderProgress(){
 /* ---------- dialogs ---------- */
 function openDlg(d){ try{ if (!d.open) d.showModal(); }catch(e){ d.setAttribute('open',''); } }
 function closeDlg(d){ try{ d.close(); }catch(e){ d.removeAttribute('open'); } }
-function openSetup(){ var v = currentVideo(); $('#tx').value = (v && v.raw) || ''; $('#txJa').value = (v && v.jaRaw) || ''; $('#splitLong').checked = DB.settings.split!==false; openDlg($('#setupDlg')); setTimeout(function(){ $('#tx').focus(); }, 50); }
+function openSetup(){ var v = currentVideo(); $('#tx').value = v ? (v.raw || cuesToRaw(v.cues)) : ''; $('#txJa').value = v ? (v.jaRaw || cuesToRaw(v.ja)) : ''; $('#splitLong').checked = DB.settings.split!==false; $('#setupNote').hidden = !(v && v.shared); openDlg($('#setupDlg')); setTimeout(function(){ $('#tx').focus(); }, 50); }
 function parseAndLoad(){
   var raw = $('#tx').value;
   var cues = C.parseTranscript(raw);
   if (!cues.length){ toast('時間付きの行が見つかりません。0:03 のような時間とテキストが並んだ形で貼ってください'); return; }
-  var v = currentVideo(); if (!v){ toast('先に動画を選んでください'); return; }
+  var v = ensureOwn(DB.videoId); if (!v){ toast('先に動画を選んでください'); return; }
   v.raw = raw; v.cues = cues; touch(v); DB.settings.split = $('#splitLong').checked;
   var jaRaw = $('#txJa').value, jaMsg = '';
   if (jaRaw.trim()){
@@ -1380,7 +1409,7 @@ function tagsOf(v){ return String(v.note||'').split(' / ').map(function(t){ retu
 function renderTagChips(all){
   var host = $('#tagChips'); host.innerHTML = '';
   var counts = {}, untagged = 0;
-  all.forEach(function(id){ var ts = tagsOf(DB.videos[id]); if (!ts.length) untagged++; ts.forEach(function(t){ counts[t] = (counts[t]||0) + 1; }); });
+  all.forEach(function(id){ var ts = tagsOf(entryOf(id) || {}); if (!ts.length) untagged++; ts.forEach(function(t){ counts[t] = (counts[t]||0) + 1; }); });
   var tags = Object.keys(counts);
   if (!tags.length){ return; }
   var items = [{k:'all', l:'すべて ' + all.length}].concat(tags.map(function(t){ return {k:t, l:t + ' ' + counts[t]}; }));
@@ -1398,7 +1427,7 @@ function renderLibrary(){
   renderTagChips(all);
   var q = S.libQuery.trim().toLowerCase();
   var ids = all.filter(function(id){
-    var v = DB.videos[id], ts = tagsOf(v);
+    var v = entryOf(id) || {}, ts = tagsOf(v);
     if (S.libTag === '__none' ? ts.length : (S.libTag !== 'all' && ts.indexOf(S.libTag) < 0)) return false;
     if (q && ((v.title||'') + ' ' + (v.speaker||'') + ' ' + (v.note||'')).toLowerCase().indexOf(q) < 0) return false;
     return true;
@@ -1408,7 +1437,7 @@ function renderLibrary(){
   else if (!ids.length) host.appendChild(el('p', 'note', '該当する動画がありません。'));
   var best = {}; DB.attempts.forEach(function(a){ var b = best[a.v] = best[a.v] || {sum:0, n:0}; b.sum += a.score; b.n++; });
   ids.forEach(function(id){
-    var v = DB.videos[id];
+    var v = entryOf(id);
     var item = el('div', 'lib-item' + (id===DB.videoId ? ' current' : ''));
     var main = el('div'); main.style.minWidth = '0';
     main.appendChild(el('b', null, v.title || id));
@@ -1418,17 +1447,26 @@ function renderLibrary(){
     sub.appendChild(el('span', lines ? 'ok' : '', lines ? 'スクリプト ' + lines + ' 行' + (v.ja && v.ja.length ? '・日本語あり' : '') : 'スクリプト未登録'));
     if (best[id]) sub.appendChild(el('span', null, '平均 ' + Math.round(best[id].sum/best[id].n) + '%・' + best[id].n + ' 回'));
     if (S.libTag === 'all') tagsOf(v).forEach(function(t){ sub.appendChild(el('span', 'tag', t)); });
+    if (v.shared) sub.appendChild(el('span', 'tag shared', '共有'));
+    else if (DB.sync.isPublic && v.cues.length) sub.appendChild(el('span', 'tag' + (v.private ? '' : ' shared'), v.private ? '共有しない' : '全体に共有中'));
     main.appendChild(sub);
     var acts = el('div', 'lib-acts');
     var bSel = el('button', 'ghost small', id===DB.videoId ? '使用中' : '選ぶ'); bSel.type = 'button'; bSel.disabled = id===DB.videoId;
     bSel.addEventListener('click', function(){ setVideo(id); closeDlg($('#videoDlg')); if (!currentVideo().cues.length) toast('次はスクリプトを貼り付けてください'); });
     var bName = el('button', 'ghost small', '名前'); bName.type = 'button'; bName.addEventListener('click', function(){ renameVideo(id); });
-    var bDel = el('button', 'ghost small danger' + (S.armedDelete===id ? ' armed' : ''), S.armedDelete===id ? '本当に削除' : '削除'); bDel.type = 'button';
+    var delLabel = v.shared ? '非表示' : '削除';
+    var bDel = el('button', 'ghost small danger' + (S.armedDelete===id ? ' armed' : ''), S.armedDelete===id ? '本当に' + delLabel : delLabel); bDel.type = 'button';
     bDel.addEventListener('click', function(){
-      if (S.armedDelete === id){ clearTimeout(S.armedTimer); S.armedDelete = null; deleteVideo(id); toast('削除しました'); return; }
+      if (S.armedDelete === id){ clearTimeout(S.armedTimer); S.armedDelete = null; deleteVideo(id); toast(v.shared ? '非表示にしました（URL で再追加できます）' : '削除しました'); return; }
       S.armedDelete = id; clearTimeout(S.armedTimer); S.armedTimer = setTimeout(function(){ S.armedDelete = null; if ($('#videoDlg').open) renderLibrary(); }, 4000); renderLibrary();
     });
-    acts.appendChild(bSel); acts.appendChild(bName); acts.appendChild(bDel);
+    acts.appendChild(bSel); acts.appendChild(bName);
+    if (!v.shared && DB.sync.isPublic && v.cues.length){
+      var bShare = el('button', 'ghost small', v.private ? '共有する' : '共有を外す'); bShare.type = 'button';
+      bShare.addEventListener('click', function(){ v.private = !v.private; touch(v); save(); schedulePush(); renderLibrary(); toast(v.private ? 'この動画は全体に共有されません' : 'この動画を全体に共有します'); });
+      acts.appendChild(bShare);
+    }
+    acts.appendChild(bDel);
     item.appendChild(main); item.appendChild(acts);
     host.appendChild(item);
   });
@@ -1470,7 +1508,7 @@ function mergeRemote(data){
     var loc = DB.videos[id], rts = +rv.updated_at || 0;
     if (loc && (loc.updated_at||0) > rts){ loc.dirty = true; return; }
     if (loc && (loc.updated_at||0) === rts && !!loc.deleted === !!rv.deleted) return;
-    DB.videos[id] = {title:rv.title||'', speaker:rv.speaker||'', note:rv.note||'', dur:+rv.dur || (loc && loc.dur) || 0, raw:rv.raw||'', cues:Array.isArray(rv.cues) ? rv.cues : [], jaRaw:rv.ja_raw||'', ja:Array.isArray(rv.ja) ? rv.ja : [], deleted:!!rv.deleted, updated_at:rts, added:loc ? loc.added : (rts || Date.now()), dirty:false};
+    DB.videos[id] = {title:rv.title||'', speaker:rv.speaker||'', note:rv.note||'', dur:+rv.dur || (loc && loc.dur) || 0, raw:rv.raw||'', cues:Array.isArray(rv.cues) ? rv.cues : [], jaRaw:rv.ja_raw||'', ja:Array.isArray(rv.ja) ? rv.ja : [], private:!!rv.private, deleted:!!rv.deleted, updated_at:rts, added:loc ? loc.added : (rts || Date.now()), dirty:false};
     changed = true; if (id === DB.videoId) curChanged = true;
   });
   var have = {}; DB.attempts.forEach(function(a){ if (a.cid) have[a.cid] = 1; });
@@ -1488,6 +1526,7 @@ function syncPull(){
   var since = DB.sync.last ? new Date(DB.sync.last - 5000).toISOString() : null;
   return rpc('shadow_pull', {p_code:DB.sync.code, p_since:since}).then(function(data){
     var m = mergeRemote(data || {});
+    DB.sync.isPublic = !!(data && data.is_public);
     DB.sync.last = +(data && data.server_time) || Date.now(); S.lastPullAt = Date.now(); save();
     var cur = currentVideo();
     if (!cur){ var ids = visibleVideos(); if (ids.length) { DB.videoId = ids[0]; m.curChanged = true; } }
@@ -1507,7 +1546,7 @@ function pushPending(){
   ids.forEach(function(id){
     chain = chain.then(function(){
       var v = DB.videos[id], stamp = v.updated_at || 0;
-      return rpc('shadow_upsert_video', {p_code:DB.sync.code, p_video:{video_id:id, title:v.title||'', speaker:v.speaker||'', note:v.note||'', dur:v.dur||null, raw:v.raw||'', cues:v.cues||[], ja_raw:v.jaRaw||'', ja:v.ja||[], deleted:!!v.deleted, updated_at:stamp}})
+      return rpc('shadow_upsert_video', {p_code:DB.sync.code, p_video:{video_id:id, title:v.title||'', speaker:v.speaker||'', note:v.note||'', dur:v.dur||null, raw:v.raw||'', cues:v.cues||[], ja_raw:v.jaRaw||'', ja:v.ja||[], private:!!v.private, deleted:!!v.deleted, updated_at:stamp}})
         .then(function(){ if (DB.videos[id] && (DB.videos[id].updated_at||0) === stamp) DB.videos[id].dirty = false; });
     });
   });
@@ -1519,6 +1558,31 @@ function pushPending(){
     });
   }
   return chain.then(function(){ save(); S.syncBusy = false; setSync('ok'); }, function(e){ save(); S.syncBusy = false; setSync('error', friendlyErr(e)); });
+}
+/* Shared catalog: videos with scripts published by the app's author, available to every user. */
+function fetchCatalog(force){
+  if (!force && Date.now() - DB.sharedAt < 10*60*1000) return Promise.resolve(false);
+  if (S.catalogBusy) return Promise.resolve(false);
+  S.catalogBusy = true;
+  return rpc('shadow_public_catalog', {}).then(function(list){
+    var next = {}, changed = false;
+    (list || []).forEach(function(rv, k){
+      if (!rv || !rv.video_id) return;
+      next[rv.video_id] = {title:rv.title||'', speaker:rv.speaker||'', note:rv.note||'', dur:+rv.dur||0, raw:'', cues:Array.isArray(rv.cues) ? rv.cues : [], jaRaw:'', ja:Array.isArray(rv.ja) ? rv.ja : [], updated_at:+rv.updated_at||0, order:k, shared:true};
+    });
+    var oldIds = Object.keys(DB.shared), newIds = Object.keys(next);
+    if (oldIds.length !== newIds.length) changed = true;
+    else newIds.forEach(function(id){ if (!DB.shared[id] || DB.shared[id].updated_at !== next[id].updated_at) changed = true; });
+    DB.shared = next; DB.sharedAt = Date.now(); save();
+    S.catalogBusy = false;
+    if (changed){
+      if (!currentVideo()){ var ids = visibleVideos(); if (ids.length) DB.videoId = ids[0]; }
+      var cur = currentVideo(); if (cur && cur.shared){ S.duration = cur.dur || S.duration; rebuildLines(); }
+      renderAll(); if ($('#videoDlg').open) renderLibrary();
+      if (S.ready && cur){ try{ var vd = S.player.getVideoData(); if (!vd || vd.video_id !== DB.videoId) S.player.cueVideoById(DB.videoId); }catch(e){} $('#playerNote').hidden = true; }
+    }
+    return changed;
+  }, function(){ S.catalogBusy = false; return false; });
 }
 function schedulePush(){ if (!DB.sync.code) return; clearTimeout(S.pushTimer); S.pushTimer = setTimeout(function(){ pushPending(); }, 1500); }
 function connectSync(code){
@@ -1565,9 +1629,9 @@ $('#btnUseUrl').addEventListener('click', function(){
 $('#urlInput').addEventListener('keydown', function(e){ if (e.key==='Enter'){ e.preventDefault(); $('#btnUseUrl').click(); } });
 $('#btnSyncConnect').addEventListener('click', function(){ if (DB.sync.code) disconnectSync(); else connectSync($('#syncCode').value); });
 $('#syncCode').addEventListener('keydown', function(e){ if (e.key==='Enter' && !DB.sync.code){ e.preventDefault(); connectSync($('#syncCode').value); } });
-$('#btnSyncNow').addEventListener('click', function(){ syncPull().then(function(ok){ if (ok) toast('同期しました'); }); });
+$('#btnSyncNow').addEventListener('click', function(){ fetchCatalog(true); syncPull().then(function(ok){ if (ok) toast('同期しました'); }); });
 window.addEventListener('online', function(){ syncPull(); });
-document.addEventListener('visibilitychange', function(){ if (!document.hidden && DB.sync.code && Date.now()-S.lastPullAt > 60000) syncPull(); });
+document.addEventListener('visibilitychange', function(){ if (!document.hidden){ if (DB.sync.code && Date.now()-S.lastPullAt > 60000) syncPull(); fetchCatalog(false); } });
 $('#btnHelp').addEventListener('click', function(){ openDlg($('#helpDlg')); });
 $('#btnCloseHelp').addEventListener('click', function(){ closeDlg($('#helpDlg')); });
 $('#btnModel').addEventListener('click', function(){ var r = S.lastResult; if (r) playRange(r.take.i, r.take.n, {}); });
@@ -1594,6 +1658,7 @@ S.duration = (currentVideo() && currentVideo().dur) || 0;
 rebuildLines();
 renderAll();
 if (DB.sync.code) setTimeout(function(){ syncPull(); }, 400);
+setTimeout(function(){ fetchCatalog(false); }, 900);
 if (location.protocol==='file:') showPlayerNote('このファイルを直接開くと、YouTube が再生を拒否します（参照元なし・code 153）。公開 URL から開いてください。');
 loadYT();
 })();
