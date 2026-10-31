@@ -1114,7 +1114,7 @@ async function assessRemote(pcm, sr, an, et, grade, partId){
   const hd={'Content-Type':'application/json','Authorization':'Bearer '+SB_ANON,'apikey':SB_ANON}; const pw=passGet(); if(pw) hd['x-yomista-pass']=pw;
   const call=()=>fetch(SB_URL+'/functions/v1/yomista-assess',{method:'POST',headers:hd,body});
   let r; try{ r=await call(); }catch(e){ await sleepMs(1500); r=await call(); }
-  if(r.status===503||r.status===546||r.status===504){ await sleepMs(1500); r=await call(); }
+  if(r.status===503){ await sleepMs(2000); r=await call(); }   // 起動の失敗だけやりなおす（時間切れ・上限は、くり返しても同じ）
   const g=await r.json().catch(()=>({error:'HTTP '+r.status}));
   if(r.status===401 && g.code==='pass'){ markNeedPass(); const e=new Error(pw?'合言葉がちがいます':'合言葉が入っていません'); e.pass=true; throw e; }
   if(!r.ok||g.error) throw new Error((g.error||('HTTP '+r.status))+(g.detail?'：'+String(g.detail).slice(0,80):''));
@@ -1185,7 +1185,7 @@ function evalTake(r, blob, prevAt){
     let pcm, sr, an=null;
     try{ ({pcm,sr}=await decodeToMono(await blob.arrayBuffer(),16000)); an=analyzeTake(pcm, sr, part); }catch(e){ an=null; }
     if(!an){ r.ev={st:'empty'}; upd(); return; }
-    const et=evalText(part); job.step='AIの先生が聞いています…（30秒〜1分ほど）'; upd();
+    const et=evalText(part); job.step='AIの先生が聞いています…（1分ほど。こんでいると2分くらい）'; upd();
     let g=null, err='';
     try{ g=await assessRemote(pcm, sr, an, et, grade, part.id); }catch(e){ err=(e&&e.pass?'pass:':'')+String(e&&e.message||e); }
     const res=buildResult(part, et, an, g, grade, err); if(prevAt) res.at=prevAt;
