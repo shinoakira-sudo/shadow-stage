@@ -1016,6 +1016,8 @@ const KEEP_AUDIO = 20;   // 音声ファイルをのこす回数（新しい順�
 const PASSKEY='yomista.pass';
 const passGet = () => { try{ return (localStorage.getItem(PASSKEY)||'').trim(); }catch(e){ return ''; } };
 const passSet = v => { try{ const t=String(v||'').normalize('NFKC').trim(); if(t) localStorage.setItem(PASSKEY,t); else localStorage.removeItem(PASSKEY); }catch(e){} };
+const needPass = () => { try{ return localStorage.getItem('yomista.needpass')==='1'; }catch(e){ return false; } };   // サーバが合言葉を求めたことがある端末だけ、入力欄を出す
+const markNeedPass = () => { try{ localStorage.setItem('yomista.needpass','1'); }catch(e){} };
 
 // ===== 録音 =====
 const REC={stream:null, mr:null, chunks:[], ctx:null, raf:0, mime:'', on:false};
@@ -1114,7 +1116,7 @@ async function assessRemote(pcm, sr, an, et, grade, partId){
   let r; try{ r=await call(); }catch(e){ await sleepMs(1500); r=await call(); }
   if(r.status===503||r.status===546||r.status===504){ await sleepMs(1500); r=await call(); }
   const g=await r.json().catch(()=>({error:'HTTP '+r.status}));
-  if(r.status===401 && g.code==='pass'){ const e=new Error(pw?'合言葉がちがいます':'合言葉が入っていません'); e.pass=true; throw e; }
+  if(r.status===401 && g.code==='pass'){ markNeedPass(); const e=new Error(pw?'合言葉がちがいます':'合言葉が入っていません'); e.pass=true; throw e; }
   if(!r.ok||g.error) throw new Error((g.error||('HTTP '+r.status))+(g.detail?'：'+String(g.detail).slice(0,80):''));
   const ym=g.meta&&g.meta.yomi&&g.meta.yomi.model; if(!yomi && Array.isArray(g.yomi) && ym && ym!=='rough' && ym!=='client') yomiPut(partId, et.sents, g.yomi);
   return Object.assign(g, {cut:(an.last-an.first)>300});
@@ -1172,11 +1174,11 @@ const RDB={p:null,
       all.forEach((x,i)=>{ if(i>=300){ os.delete(x.id); return; } if(!x.blob) return; const drop=(keep && x.id!==keepId && x.key===keep.key) || seen.has(x.key) || nb>=KEEP_AUDIO; seen.add(x.key);
         if(drop){ const g=os.get(x.id); g.onsuccess=()=>{ const v=g.result; if(v){ v.blob=null; os.put(v); } }; } else nb++; }); }; }catch(e){} } };
 function saveRecResult(res, blob, owner){ if(res.demo) return;
-  if(P && P.id===owner){ if(!Array.isArray(S.recs)) S.recs=[]; S.recs.push({date:res.date, at:res.at, part:res.part, score:res.score, items:res.items, cpm:res.cpm, ai:res.ai}); if(S.recs.length>300) S.recs=S.recs.slice(-300); save(); }
+  if(P && P.id===owner){ if(!Array.isArray(S.recs)) S.recs=[]; S.recs=S.recs.filter(x=>x.at!==res.at); S.recs.push({date:res.date, at:res.at, part:res.part, score:res.score, items:res.items, cpm:res.cpm, ai:res.ai}); if(S.recs.length>300) S.recs=S.recs.slice(-300); save(); }
   const id=recId(owner, res.part, res.at); RDB.put({id, at:res.at, res, blob:blob||null}).then(ok=>{ if(ok) RDB.prune(id); }); }
 
 // ===== 評価をすすめる（問題・ルーレットのあいだに） =====
-function evalTake(r, blob){
+function evalTake(r, blob, prevAt){
   const part=r.part, grade=gradeNow(), owner=P?P.id:'_'; const job=r.ev={st:'run', step:'録音をととのえています…'}; const upd=()=>{ if(R===r) updateRecCard(); };
   upd();
   (async()=>{
@@ -1186,8 +1188,8 @@ function evalTake(r, blob){
     const et=evalText(part); job.step='AIの先生が聞いています…（30秒〜1分ほど）'; upd();
     let g=null, err='';
     try{ g=await assessRemote(pcm, sr, an, et, grade, part.id); }catch(e){ err=(e&&e.pass?'pass:':'')+String(e&&e.message||e); }
-    const res=buildResult(part, et, an, g, grade, err);
-    r.ev={st:'done', res, url:URL.createObjectURL(blob)}; saveRecResult(res, blob, owner); upd();
+    const res=buildResult(part, et, an, g, grade, err); if(prevAt) res.at=prevAt;
+    r.ev={st:'done', res, url:URL.createObjectURL(blob), blob}; saveRecResult(res, blob, owner); upd();
     if(R===r){ if(res.speech) SFX.play[res.score>=80?'stamp':'correct'](); }
     else if(P && P.id===owner) toast('音読カードができたよ（「きろく」で見られるよ）');
   })();
@@ -1221,7 +1223,7 @@ function recCardHTML(ev){
     : `<div class="rc-head"><div><div class="label">音読カード${res.demo?'（サンプル）':''}</div><div class="rc-rank">${esc(rankOf(res.score))}</div></div><div class="rc-score"><span class="num">${res.score}</span><small>点</small></div></div>`;
   return `<section class="card reccard${res.demo?' demo':''}">${head}
     ${res.demo?`<p class="note" style="margin:0">これはサンプルです（録音はしていません）。${IN_CLAUDE?'Claude の画面の中ではマイクが使えないので、録音はブラウザで開いたウェブ版でできます。':''}</p>`:''}
-    ${!res.ai&&!res.demo?(String(res.err).startsWith('pass:')?`<p class="note rec-err" style="margin:0">🔑 ${esc(res.err.slice(5))}。おうちの人の画面（または よむ前の画面）で「音読チェックの合言葉」を入れると、AIの先生がチェックしてくれます。いまは機械で測った分だけ出しています。</p>`:`<p class="note" style="margin:0">AIの先生につながらなかったので、機械で測った分だけ出しています。${res.err?`<br><span class="muted">（${esc(res.err.slice(0,90))}）</span>`:''}</p>`):''}
+    ${!res.ai&&!res.demo?(String(res.err).startsWith('pass:')?`<p class="note rec-err" style="margin:0">🔑 ${esc(res.err.slice(5))}。合言葉を入れると、この録音をAIの先生がチェックしなおします。いまは機械で測った分だけ出しています。</p>${ev.blob?passFormHTML('pass-c'):''}`:`<p class="note" style="margin:0">AIの先生につながらなかったので、機械で測った分だけ出しています。${res.err?`<br><span class="muted">（${esc(res.err.slice(0,90))}）</span>`:''}</p>`):''}
     ${res.ai&&!res.judged&&res.speech&&!res.demo?'<p class="note" style="margin:0">先生のひとことは今回お休み。とばし・読みちがいのチェックと、機械で測った値で出しています。</p>':''}
     ${res.speech===false?'':`<ul class="rc-items">${it('正しく',I.acc,accDetail)}${it('すらすら',I.smooth,pt(I.smooth))}${it('はっきり',I.clear,pt(I.clear))}${it('間（ま）',I.pause,pt(I.pause))}${it('速さ',I.speed,res.cpm?`${res.cpm}字/分`:'')}${it('気持ち',I.feeling,pt(I.feeling))}</ul>`}
     ${res.good?`<p class="rc-good"><b>よかったところ</b>${esc(res.good)}</p>`:''}
@@ -1240,13 +1242,14 @@ function wireRecCard(root, ev){ if(!root) return;
     if(k==='mine'){ if(!ev||!ev.url) return; stopRcAudio(); voiceStop(); rcAudio=new Audio(ev.url); rcAudio.play().catch(()=>toast('再生できませんでした')); }
     else if(k==='model'){ stopRcAudio(); R.back=R.step; R.step='listen'; renderRead(); window.scrollTo(0,0); }
     else if(k==='again'){ stopRcAudio(); R.recOnly=true; R.rec=true; R.recErr=''; R.step='ready'; renderRead(); window.scrollTo(0,0); } }));
-  root.querySelectorAll('[data-rs]').forEach(b=>b.addEventListener('click',()=>{ stopRcAudio(); R.back=R.step; R.lpStart=+b.dataset.rs; R.step='listen'; renderRead(); })); }
+  root.querySelectorAll('[data-rs]').forEach(b=>b.addEventListener('click',()=>{ stopRcAudio(); R.back=R.step; R.lpStart=+b.dataset.rs; R.step='listen'; renderRead(); }));
+  wirePassForms(root, ()=>{ if(R && R.ev && R.ev.blob && R.ev.res) evalTake(R, R.ev.blob, R.ev.res.at); }); }
 function updateRecCard(){ const w=document.getElementById('recwrap'); if(!w||!R) return; w.innerHTML=recCardHTML(R.ev); wireRecCard(w, R.ev); }
 
 // ===== よむ前：録音のスイッチ（ウェブ版） / Claude の画面では説明とサンプル =====
 function recOptHTML(){
   if(R.recOnly) return R.recErr?`<p class="note rec-err" style="margin:0">🎤 ${esc(R.recErr)}</p>`:'';
-  if(CAN_MIC) return `<div class="recopt"><button class="toggle" id="tg-rec" type="button" aria-pressed="${!!R.rec}">🎤 録音して音読チェック</button><span class="note">${R.rec?'よみおわると、AIの先生が音読カードをつくるよ':'オンにすると、AIの先生が音読カードをつくるよ'}</span></div>${R.recErr?`<p class="note rec-err" style="margin:0">🎤 ${esc(R.recErr)}。録音なしで よむこともできます。</p>`:''}${R.rec&&!passGet()?passFormHTML('pass-r'):''}`;
+  if(CAN_MIC) return `<div class="recopt"><button class="toggle" id="tg-rec" type="button" aria-pressed="${!!R.rec}">🎤 録音して音読チェック</button><span class="note">${R.rec?'よみおわると、AIの先生が音読カードをつくるよ':'オンにすると、AIの先生が音読カードをつくるよ'}</span></div>${R.recErr?`<p class="note rec-err" style="margin:0">🎤 ${esc(R.recErr)}。録音なしで よむこともできます。</p>`:''}${R.rec&&needPass()&&!passGet()?passFormHTML('pass-r'):''}`;
   return `<div class="recopt"><button class="toggle" id="tg-rec" type="button" aria-expanded="false">🎤 録音して音読チェック</button><span class="note">${IN_CLAUDE?'ウェブ版で使えます':'このブラウザでは録音できません'}</span></div>
     <div class="recinfo" id="recinfo" hidden><p style="margin:0">${IN_CLAUDE?'Claude の画面の中では、しくみの都合でマイクが使えません。録音は、Safari や Chrome で開いた<b>ウェブ版のよみスタ</b>でできます。':'このブラウザは録音に対応していません。Safari か Chrome の新しい版でためしてください。'}</p>
     <div class="row" style="gap:.5rem;justify-content:center">${WEB_URL&&IN_CLAUDE?`<a class="btn-clay btn-small" href="${esc(WEB_URL)}" target="_blank" rel="noopener">ウェブ版をひらく</a>`:''}<button class="btn-ghost btn-small" type="button" id="rec-demo">音読カードのサンプルを見る</button></div></div>`;
